@@ -1,0 +1,60 @@
+# CI de 50cc LIFE (sous-dossier 50cc-life/ uniquement : Le QG n'est pas concerné).
+# Gratuit : minutes GitHub Actions illimitées sur un dépôt public.
+name: 50cc LIFE
+
+on:
+  push:
+    paths:
+      - '50cc-life/**'
+      - '.github/workflows/50cc-life.yml'
+  pull_request:
+    paths:
+      - '50cc-life/**'
+      - '.github/workflows/50cc-life.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 50cc-life-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: 50cc-life
+
+jobs:
+  verifier:
+    name: Types, tests, build, budgets, démarrage
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: 50cc-life/package-lock.json
+
+      - name: Dépendances
+        run: npm ci
+
+      - name: Vérification des types
+        run: npm run typecheck
+
+      - name: Tests unitaires
+        run: npm test
+
+      - name: Build de production
+        run: npm run build
+
+      - name: Budgets de taille
+        run: npm run check:sizes
+
+      - name: Navigateur de test
+        run: npx playwright install --with-deps chromium
+
+      - name: Tests de démarrage (PC + mobile émulé)
+        run: npx playwright test --trace off

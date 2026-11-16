@@ -1,0 +1,31 @@
+# --- Dépendances et builds (régénérés, jamais commités) ---
+node_modules/
+dist/
+.vite/
+coverage/
+test-results/
+playwright-report/
+*.log
+.DS_Store
+
+# --- Sources lourdes : JAMAIS dans Git (voir docs/ARCHITECTURE.md § Stockage gratuit) ---
+# Le dossier assets-src/ reste sur votre disque + sauvegarde cloud gratuite.
+assets-src/*
+!assets-src/README.md
+*.blend
+*.blend1
+*.blend@
+*.psd
+*.kra
+*.xcf
+*.exr
+*.hdr
+*.tif
+*.tiff
+*.wav
+*.aif
+*.aiff
+*.flac
+*.fbx
+*.mov
+*.mp4

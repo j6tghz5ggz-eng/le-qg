@@ -1,0 +1,273 @@
+/*
+ * Styles de l'interface (HTML/CSS par-dessus le canvas 3D).
+ * Mobile d'abord : zones tactiles de 44 px minimum, marges de sécurité
+ * (encoche, barre d'accueil iOS), aucun défilement ni zoom de page.
+ */
+:root {
+  --ui-bg: rgba(14, 16, 19, 0.72);
+  --ui-bg-solid: #121417;
+  --ui-ink: #f2f1ee;
+  --ui-muted: #a9adb3;
+  --ui-accent: #ffb020;
+  --ui-danger: #ff5a4f;
+  --ui-line: rgba(255, 255, 255, 0.14);
+  --ui-radius: 10px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ui-bg-solid);
+  color: var(--ui-ink);
+  font: 15px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+#game-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  outline: none;
+  /* Les gestes tactiles vont au jeu, pas au navigateur (pas de zoom/défilement). */
+  touch-action: none;
+}
+
+#ui-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none; /* le canvas reçoit les clics… */
+}
+
+#ui-root > * {
+  pointer-events: auto; /* …sauf sur les éléments d'interface */
+}
+
+button,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+.btn,
+.hud-btn {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-radius);
+  background: var(--ui-bg);
+  color: var(--ui-ink);
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.btn:hover,
+.hud-btn:hover {
+  border-color: var(--ui-accent);
+}
+
+.btn:active,
+.hud-btn:active {
+  transform: scale(0.97);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* ---------- Écran de chargement ---------- */
+.loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 16px;
+  background: radial-gradient(ellipse at 50% 40%, #23272d 0%, var(--ui-bg-solid) 70%);
+  transition: opacity 0.4s ease;
+  z-index: 10;
+}
+
+.loading.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.loading__title {
+  margin: 0;
+  font-size: clamp(2.4rem, 9vw, 4.5rem);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  font-style: italic;
+}
+
+.loading__title span {
+  color: var(--ui-accent);
+}
+
+.loading__bar {
+  width: min(320px, 80vw);
+  height: 6px;
+  border-radius: 3px;
+  background: var(--ui-line);
+  overflow: hidden;
+}
+
+.loading__fill {
+  height: 100%;
+  background: var(--ui-accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.25s ease;
+}
+
+.loading__label {
+  margin: 0;
+  color: var(--ui-muted);
+  font-size: 0.9rem;
+  min-height: 1.4em;
+}
+
+/* ---------- Erreur bloquante ---------- */
+.fatal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: calc(16px + var(--safe-top)) 16px calc(16px + var(--safe-bottom));
+  background: var(--ui-bg-solid);
+  text-align: center;
+  z-index: 20;
+  user-select: text;
+}
+
+.fatal h1 {
+  margin: 0;
+  color: var(--ui-danger);
+  font-size: 1.4rem;
+}
+
+.fatal p {
+  margin: 0;
+  max-width: 34rem;
+}
+
+.fatal__detail {
+  max-width: min(40rem, 100%);
+  overflow: auto;
+  padding: 10px;
+  border-radius: var(--ui-radius);
+  background: #000;
+  color: var(--ui-muted);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  text-align: left;
+}
+
+/* ---------- Message temporaire ---------- */
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: calc(80px + var(--safe-bottom));
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 10px 16px;
+  border-radius: var(--ui-radius);
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-line);
+  z-index: 15;
+}
+
+/* ---------- Débogage ---------- */
+.debug {
+  position: absolute;
+  top: calc(8px + var(--safe-top));
+  left: calc(8px + var(--safe-left));
+  max-width: calc(100% - 80px - var(--safe-left) - var(--safe-right));
+  padding: 8px 10px;
+  border-radius: var(--ui-radius);
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-line);
+  font: 12px/1.35 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+.debug__stats {
+  margin: 0 0 8px;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.debug__quality {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.debug__quality select {
+  min-height: 36px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-line);
+  background: #1c1f24;
+}
+
+.debug__toggle {
+  position: absolute;
+  top: calc(8px + var(--safe-top));
+  right: calc(8px + var(--safe-right));
+  padding: 0;
+}
+
+.debug__actions {
+  position: absolute;
+  right: calc(12px + var(--safe-right));
+  bottom: calc(12px + var(--safe-bottom));
+  display: flex;
+  gap: 8px;
+}
+
+.hud-btn--wide {
+  min-height: 52px;
+  padding: 0 18px;
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading,
+  .loading__fill {
+    transition: none;
+  }
+}

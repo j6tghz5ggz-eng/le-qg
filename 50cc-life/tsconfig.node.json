@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["vite.config.ts", "playwright.config.ts", "tests/e2e", "src/debug/debugHooks.ts"]
+}
