@@ -40,6 +40,19 @@ export class InputManager {
     return this._scheme;
   }
 
+  /**
+   * Un écran HTML (boutique…) prend ou rend la main : commandes du jeu
+   * coupées et souris libérée pour cliquer dans l'écran.
+   */
+  setUiCapture(on: boolean): void {
+    this.state.setMuted(on);
+    if (on) this.keyboardMouse.releasePointerLock();
+  }
+
+  get uiCaptured(): boolean {
+    return this.state.isMuted;
+  }
+
   /** À appeler une fois par image, avant la simulation. */
   poll(dt: number): void {
     this.state.beginFrame();

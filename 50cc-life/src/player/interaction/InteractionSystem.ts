@@ -271,6 +271,11 @@ export class InteractionSystem implements GameSystem {
     this.focus = null;
   }
 
+  /** Lâche l'objet tenu (chargement d'une sauvegarde, téléportation…). */
+  dropHeld(): void {
+    this.release(false);
+  }
+
   private release(throwIt: boolean): void {
     const held = this.held;
     if (!held) return;

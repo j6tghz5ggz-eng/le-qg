@@ -19,6 +19,7 @@ import { PhysicsShapeBox } from '@babylonjs/core/Physics/v2/physicsShape';
 import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder';
 import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder';
 import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder';
+import { CreatePlane } from '@babylonjs/core/Meshes/Builders/planeBuilder';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { PhysicsMotionType, PhysicsShapeType } from '@babylonjs/core/Physics/v2/IPhysicsEnginePlugin';
 import { PhysicsAggregate } from '@babylonjs/core/Physics/v2/physicsAggregate';
@@ -52,6 +53,15 @@ export const SPARE_PART_SPOTS = [
   new Vector3(-3.42, 1.16, 12.35),
 ] as const;
 
+/** Bureau avec l'ordinateur (boutique en ligne), contre le mur droit du garage. */
+export const COMPUTER_DESK = { x: 3.5, z: 11.3, height: 0.75 } as const;
+
+/** Palette où arrivent les colis (pièces achetées), près de la porte. */
+export const DELIVERY_SPOT = new Vector3(2.55, 0.15 + 0.12, 9.85);
+
+/** Intérieur du garage (pour la revente des pièces qui y traînent). */
+export const GARAGE_BOUNDS = { minX: -4, maxX: 4, minZ: 9, maxZ: 15 } as const;
+
 /** Colline d'essai, axe z en x = 30 : montée de 80 m (+5 m), plateau de 20 m, descente de 80 m. */
 export const HILL = { x: 30, width: 8, zStart: 0, rampLength: 80, plateau: 20, height: 5 } as const;
 
@@ -60,6 +70,7 @@ export const TELEPORT_POINTS: ReadonlyArray<{ readonly id: string; readonly labe
   { id: 'start', label: 'Départ', position: PLAYER_SPAWN.position, yaw: 0 },
   { id: 'garage', label: 'Garage (moto)', position: new Vector3(-0.8, 0.15, 11.0), yaw: 0.9 },
   { id: 'bench', label: 'Établi du garage', position: new Vector3(-2.4, 0.15, 12.0), yaw: -Math.PI / 2 },
+  { id: 'computer', label: 'Ordinateur (boutique)', position: new Vector3(2.5, 0.15, 11.3), yaw: Math.PI / 2 },
   { id: 'road', label: "Route d'essai", position: new Vector3(-14, 0, -12), yaw: 0 },
   { id: 'hill-foot', label: 'Pied de la colline', position: new Vector3(HILL.x, 0, -12), yaw: 0 },
   { id: 'hill-top', label: 'Sommet de la colline', position: new Vector3(HILL.x, HILL.height, HILL.zStart + HILL.rampLength + 4), yaw: 0 },
@@ -91,6 +102,8 @@ export class TestWorld implements GameSystem {
   private readonly crates: DynamicProp[] = [];
   private probe: Mesh | null = null;
   private counter = 0;
+  /** Appelé quand le joueur utilise l'ordinateur du garage (ouvre la boutique). */
+  onComputer: (() => void) | null = null;
 
   init(ctx: GameContext): void {
     this.ctx = ctx;
@@ -211,6 +224,59 @@ export class TestWorld implements GameSystem {
     ];
     for (const spec of specs) this.staticBox(spec);
     this.createGarageLight();
+    this.createComputerDesk();
+    this.createDeliveryPallet();
+  }
+
+  /** Bureau, ordinateur portable allumé (écran « Bécane Shop »), chaise. */
+  private createComputerDesk(): void {
+    const { x, z, height } = COMPUTER_DESK;
+    const floor = 0.15;
+    const { wood } = this.materials;
+    this.staticBox({ name: 'desk-top', size: [0.6, 0.04, 1.1], position: [x, floor + height, z], material: wood });
+    for (const dz of [-0.5, 0.5]) {
+      this.staticBox({ name: 'desk-leg', size: [0.56, height - 0.02, 0.04], position: [x, floor + (height - 0.02) / 2, z + dz], material: wood });
+    }
+    const top = floor + height + 0.02;
+    // Ordinateur portable : base + écran incliné tourné vers l'intérieur du garage (-x).
+    const base = CreateBox('laptop-base', { width: 0.24, height: 0.018, depth: 0.34 }, this.scene);
+    base.position.set(x - 0.05, top + 0.009, z);
+    base.material = pbr(this.scene, 'laptop', new Color3(0.12, 0.12, 0.13), 0.4, 0.6);
+    const screen = CreateBox('laptop-screen', { width: 0.012, height: 0.22, depth: 0.34 }, this.scene);
+    screen.position.set(x + 0.07, top + 0.12, z);
+    screen.rotation.z = -0.2; // l'écran penche vers l'arrière (loin de l'utilisateur)
+    screen.material = base.material;
+    // Écran : plan tourné vers l'intérieur du garage, incliné comme l'écran.
+    const display = CreatePlane('laptop-display', { width: 0.31, height: 0.19 }, this.scene);
+    display.position.set(x + 0.062, top + 0.12, z);
+    display.rotation.set(0.2, Math.PI / 2, 0);
+    display.material = shopScreenMaterial(this.scene);
+    for (const mesh of [base, screen, display]) {
+      mesh.receiveShadows = true;
+      this.env.addShadowCaster(mesh);
+    }
+    // Volume cliquable couvrant tout l'ordinateur.
+    const hit = new TransformNode('laptop-hit', this.scene);
+    hit.position.set(x, top + 0.11, z);
+    const body = new PhysicsBody(hit, PhysicsMotionType.STATIC, false, this.scene);
+    body.shape = new PhysicsShapeBox(Vector3.Zero(), Quaternion.Identity(), new Vector3(0.3, 0.24, 0.38), this.scene);
+    this.ctx.interactables.register(body, {
+      label: t('object.computer'),
+      useLabel: t('object.openShop'),
+      use: () => this.onComputer?.(),
+    });
+  }
+
+  /** Palette de livraison (les colis arrivent dessus). */
+  private createDeliveryPallet(): void {
+    const { wood } = this.materials;
+    const p = DELIVERY_SPOT;
+    for (const dx of [-0.32, 0, 0.32]) {
+      this.staticBox({ name: 'pallet-board', size: [0.12, 0.025, 0.8], position: [p.x + dx, 0.15 + 0.11, p.z], material: wood });
+    }
+    for (const dz of [-0.34, 0, 0.34]) {
+      this.staticBox({ name: 'pallet-block', size: [0.8, 0.09, 0.1], position: [p.x, 0.15 + 0.045, p.z + dz], material: wood });
+    }
   }
 
   /** Plafonnier (point lumineux) et interrupteur à côté de la porte. */
@@ -397,4 +463,37 @@ function createCheckerTexture(scene: Scene, repeat: number): DynamicTexture {
   tex.uScale = repeat;
   tex.vScale = repeat;
   return tex;
+}
+
+/** Écran de l'ordinateur : page d'accueil de la boutique (texture dessinée). */
+function shopScreenMaterial(scene: Scene): PBRMaterial {
+  const tex = new DynamicTexture('shop-screen', { width: 256, height: 160 }, scene, true);
+  const ctx = tex.getContext() as CanvasRenderingContext2D;
+  ctx.fillStyle = '#10151d';
+  ctx.fillRect(0, 0, 256, 160);
+  ctx.fillStyle = '#ffb020';
+  ctx.fillRect(0, 0, 256, 34);
+  ctx.fillStyle = '#111';
+  ctx.font = 'italic 900 24px Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('BÉCANE SHOP', 128, 25);
+  ctx.fillStyle = '#e8eaed';
+  ctx.font = '700 15px Arial, sans-serif';
+  ctx.fillText('Pièces 50 cm³', 128, 66);
+  ctx.fillStyle = '#9aa4b2';
+  ctx.font = '13px Arial, sans-serif';
+  ctx.fillText('Livraison au garage', 128, 92);
+  ctx.fillStyle = '#ffb020';
+  ctx.fillRect(78, 112, 100, 28);
+  ctx.fillStyle = '#111';
+  ctx.font = '700 14px Arial, sans-serif';
+  ctx.fillText('Commander', 128, 131);
+  tex.update();
+  const mat = new PBRMaterial('shop-screen', scene);
+  mat.albedoTexture = tex;
+  mat.emissiveTexture = tex;
+  mat.emissiveColor = new Color3(0.9, 0.9, 0.9);
+  mat.metallic = 0;
+  mat.roughness = 0.2;
+  return mat;
 }

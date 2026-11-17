@@ -135,4 +135,23 @@ describe('sticks', () => {
     expect(responseCurve(-0.5)).toBeCloseTo(-0.25);
     expect(responseCurve(1)).toBe(1);
   });
+
+  it('écran ouvert (boutique) : commandes coupées puis rendues', () => {
+    const state = new ActionState(clock().now);
+    state.setButton('jump', 'kb:Space', true);
+    state.setMove('kb', 0, 1);
+    state.setMuted(true);
+    expect(state.isHeld('jump')).toBe(false);
+    expect(state.getMove()).toEqual({ x: 0, y: 0 });
+    state.setButton('use', 'kb:KeyE', true);
+    state.setMove('kb', 1, 0);
+    state.addLook(0.5, 0);
+    expect(state.consumePress('use')).toBe(false);
+    expect(state.getMove()).toEqual({ x: 0, y: 0 });
+    expect(state.consumeLook()).toEqual({ x: 0, y: 0 });
+    state.setMuted(false);
+    state.setButton('use', 'kb:KeyE', false);
+    state.setButton('use', 'kb:KeyE', true);
+    expect(state.consumePress('use')).toBe(true);
+  });
 });

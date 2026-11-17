@@ -131,6 +131,11 @@ export class KeyboardMouseDevice {
     return 'ZQSD / WASD';
   }
 
+  /** Libère la souris (ouverture d'un écran). */
+  releasePointerLock(): void {
+    if (this._locked) document.exitPointerLock();
+  }
+
   dispose(): void {
     this.abort.abort();
     if (this._locked) document.exitPointerLock();

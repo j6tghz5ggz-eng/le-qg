@@ -29,10 +29,13 @@ import { t } from '../ui/i18n';
 import { showFatalError } from '../ui/screens/ErrorScreen';
 import { LoadingScreen } from '../ui/screens/LoadingScreen';
 import { showToast } from '../ui/screens/Toast';
-import { BIKE_SPAWN, PLAYER_SPAWN, SPARE_PART_SPOTS, TELEPORT_POINTS, TestWorld } from '../world/TestWorld';
+import { BIKE_SPAWN, DELIVERY_SPOT, GARAGE_BOUNDS, PLAYER_SPAWN, SPARE_PART_SPOTS, TELEPORT_POINTS, TestWorld } from '../world/TestWorld';
 import { CheatRegistry } from '../debug/CheatRegistry';
 import { EconomySystem } from '../economy/EconomySystem';
 import { MoneyHud } from '../ui/hud/MoneyHud';
+import { ShopSystem } from '../economy/ShopSystem';
+import { ShopScreen } from '../ui/screens/ShopScreen';
+import { SaveSystem } from '../save/SaveSystem';
 import { MechanicsSystem } from '../mechanics/MechanicsSystem';
 import { SM50 } from '../vehicles/bike/specs';
 import { VehicleSystem } from '../vehicles/VehicleSystem';
@@ -112,6 +115,8 @@ export class Game {
         { defId: 'exhaust-racing', condition: 1, position: SPARE_PART_SPOTS[2] },
         { defId: 'silencer-racing', condition: 1, position: SPARE_PART_SPOTS[3] },
       ]);
+      const shop = new ShopSystem(economy.wallet, mechanics, { deliverySpot: DELIVERY_SPOT, sellArea: GARAGE_BOUNDS });
+      const save = new SaveSystem({ economy, player, vehicles, mechanics, shop });
       // Ordre important : le monde, le joueur (caméra), les véhicules, la
       // mécanique (fantôme de remontage), puis l'interaction (rayon depuis
       // la caméra, désactivée en conduite).
@@ -122,12 +127,17 @@ export class Game {
       await this.addSystem(player, ctx);
       await this.addSystem(vehicles, ctx);
       await this.addSystem(mechanics, ctx);
+      await this.addSystem(shop, ctx);
       await this.addSystem(interaction, ctx);
+      // En dernier : la sauvegarde s'applique une fois tous les systèmes prêts.
+      await this.addSystem(save, ctx);
 
       new Hud(this.uiRoot, this.bus, input.scheme);
       new TouchControls(this.uiRoot, input, this.bus);
       new PointerLockHint(this.uiRoot, input, this.bus);
       new VehicleHud(this.uiRoot, this.bus, input.scheme);
+      const shopScreen = new ShopScreen(this.uiRoot, this.bus, shop, economy.wallet, input);
+      world.onComputer = () => shopScreen.open();
       const crateSpawn = new Vector3();
       ctx.cheats.add('Monde', {
         kind: 'action',
@@ -249,6 +259,9 @@ export class Game {
         get money() {
           return economy.wallet.balance;
         },
+        get shopOpen() {
+          return shopScreen.isOpen;
+        },
         slotPosition: (slot: string) => {
           const p = mechanics.slotWorldPosition(slot);
           return p ? { x: p.x, y: p.y, z: p.z } : null;
@@ -260,7 +273,7 @@ export class Game {
           return bike ? { x: bike.position.x, y: bike.position.y, z: bike.position.z, lean: bike.leanAngle } : null;
         },
         probeY: () => world.probeY(),
-      }, { scene, engine, player, vehicles, interaction, world, input, mechanics, economy, cheats: ctx.cheats });
+      }, { scene, engine, player, vehicles, interaction, world, input, mechanics, economy, shop, save, cheats: ctx.cheats });
 
       this.loop.start();
       this.setState('playing');

@@ -36,6 +36,8 @@ export interface DebugHooks {
   readonly bikeParts: string[];
   /** Solde du porte-monnaie (€). */
   readonly money: number;
+  /** L'écran de la boutique est ouvert. */
+  readonly shopOpen: boolean;
   slotPosition(slot: string): { x: number; y: number; z: number } | null;
   /** Pièces posées dans le monde. */
   looseParts(): Array<{ name: string; x: number; y: number; z: number }>;

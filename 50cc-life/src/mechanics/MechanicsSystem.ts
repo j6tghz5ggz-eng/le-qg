@@ -28,6 +28,17 @@ import { EngineAssembly, createPart, stockSm50, type PartInstance } from './Engi
 import { createPartMesh, getGhostMaterial } from './partMeshes';
 import { PART_CATALOG, PARTS, type PartDefinition } from './parts';
 import type { SlotDefinition } from './slots';
+import type { SavedPart } from '../save/saveData';
+
+/** Pièce posée dans le monde, vue de l'extérieur (boutique, sauvegarde). */
+export interface LoosePartInfo {
+  readonly uid: string;
+  readonly def: PartDefinition;
+  readonly condition: number;
+  readonly position: Vector3;
+  /** Tenue en main par le joueur (ne peut pas être vendue). */
+  readonly held: boolean;
+}
 
 export interface SparePart {
   readonly defId: string;
@@ -167,6 +178,12 @@ export class MechanicsSystem implements GameSystem {
   private cheatRebuild(mutate: (engine: EngineAssembly) => void, message: string): void {
     const rig = this.rigs[0];
     if (!rig) return;
+    this.rebuildRig(rig, mutate);
+    this.ctx.bus.emit('ui:notice', { message });
+  }
+
+  /** Remplace les pièces d'une moto (modèles 3D et performances recalculés). */
+  private rebuildRig(rig: BikeRig, mutate: (engine: EngineAssembly) => void): void {
     for (const mesh of rig.meshes.values()) {
       this.ctx.interactables.unregisterMesh(mesh);
       mesh.dispose();
@@ -175,7 +192,6 @@ export class MechanicsSystem implements GameSystem {
     mutate(rig.engine);
     for (const [slotId, part] of rig.engine.entries()) this.attachMesh(rig, slotId, part);
     this.refreshStats(rig);
-    this.ctx.bus.emit('ui:notice', { message });
   }
 
   /** Pièce neuve devant le joueur, à hauteur de poitrine (elle tombe au sol). */
@@ -205,6 +221,64 @@ export class MechanicsSystem implements GameSystem {
   /** Pièces posées dans le monde (pour les tests). */
   looseParts(): Array<{ name: string; position: Vector3 }> {
     return [...this.loose.values()].map((l) => ({ name: l.def.name, position: l.mesh.getAbsolutePosition().clone() }));
+  }
+
+  /** Pièces posées dans le monde, avec leur état (boutique, sauvegarde). */
+  listLoose(): LoosePartInfo[] {
+    const held = this.interaction.heldBody;
+    return [...this.loose.values()].map((l) => ({
+      uid: l.part.uid,
+      def: l.def,
+      condition: l.part.condition,
+      position: l.mesh.getAbsolutePosition().clone(),
+      held: l.aggregate.body === held,
+    }));
+  }
+
+  /** Retire une pièce du monde (vendue). Refusé si le joueur la tient. */
+  removeLoose(uid: string): boolean {
+    for (const loose of this.loose.values()) {
+      if (loose.part.uid !== uid) continue;
+      if (loose.aggregate.body === this.interaction.heldBody) return false;
+      this.disposeLoose(loose);
+      return true;
+    }
+    return false;
+  }
+
+  /** Fait apparaître une pièce (livraison, sauvegarde). */
+  spawnPart(defId: string, condition: number, position: Vector3): void {
+    if (PART_CATALOG.has(defId)) this.spawnLoose(createPart(defId, condition), position);
+  }
+
+  /** État à sauvegarder : pièces montées sur la première moto, pièces au sol. */
+  exportState(): { parts: Record<string, SavedPart> | null; loose: Array<SavedPart & { x: number; y: number; z: number }> } {
+    const rig = this.rigs[0];
+    let parts: Record<string, SavedPart> | null = null;
+    if (rig) {
+      parts = {};
+      for (const [slot, part] of rig.engine.entries()) parts[slot] = { defId: part.defId, condition: part.condition };
+    }
+    const loose = this.listLoose().map((l) => ({ defId: l.def.id, condition: l.condition, x: l.position.x, y: l.position.y, z: l.position.z }));
+    return { parts, loose };
+  }
+
+  /** Restaure une sauvegarde : remplace les pièces de la moto et celles au sol. */
+  importState(parts: Readonly<Record<string, SavedPart>> | null, loose: ReadonlyArray<SavedPart & { x: number; y: number; z: number }>): void {
+    if (this.interaction.isHolding) this.interaction.dropHeld();
+    for (const l of [...this.loose.values()]) this.disposeLoose(l);
+    const rig = this.rigs[0];
+    if (rig && parts) {
+      this.rebuildRig(rig, (engine) => {
+        engine.clear();
+        for (const slot of engine.slots) {
+          const saved = parts[slot.id];
+          if (saved) engine.forceSet(slot.id, createPart(saved.defId, saved.condition));
+        }
+      });
+    }
+    // Légèrement au-dessus de leur place : elles se reposent sans traverser le sol.
+    for (const l of loose) this.spawnPart(l.defId, l.condition, new Vector3(l.x, l.y + 0.03, l.z));
   }
 
   update(): void {

@@ -63,7 +63,7 @@ presque chaque semaine : on met à jour volontairement, tous les paquets
 ├── index.html                 entrée du jeu (canvas + couche UI)
 ├── package.json · tsconfig*.json · vite.config.ts · playwright.config.ts
 ├── public/                    fichiers servis tels quels (icône, puis assets optimisés)
-├── assets-src/                sources lourdes : HORS GIT (voir § 11)
+├── assets-src/                sources lourdes : HORS GIT (voir § 12)
 ├── tools/check-sizes.mjs      budgets de taille
 ├── .githooks/pre-commit       refuse les fichiers de plus de 10 Mo
 ├── docs/ARCHITECTURE.md       ce document
@@ -85,10 +85,11 @@ presque chaque semaine : on met à jour volontairement, tous les paquets
     │   ├── quality/           profils, résolution dynamique
     │   ├── rendering/         post-traitements, meshKit (formes détaillées construites en code)
     │   ├── audio/             contexte Web Audio (déverrouillé au premier geste)
-    │   └── save/              préférences (puis sauvegardes IndexedDB)
+    │   └── save/              accès sûr au stockage local (préférences, sauvegarde)
     ├── player/                joueur à la 1re personne, interaction (prendre, lancer, démonter)
     ├── mechanics/             pièces, emplacements, règles de démontage, atelier 3D, tracé de l'échappement
-    ├── economy/               porte-monnaie (Wallet, pur et testé), système d'économie
+    ├── economy/               porte-monnaie, boutique (règles pures + système), économie
+    ├── save/                  format de sauvegarde (pur, validé) et sauvegarde automatique
     ├── vehicles/
     │   ├── bike/              physique de la moto, modèles 3D (supermotard détaillé, déco), fiches techniques
     │   ├── simulation/        boîte manuelle, embrayage auto, variateur (TS pur, testé)
@@ -449,7 +450,60 @@ Elle se trouve en x = 30. On y vérifie en jeu les vitesses en pente :
 - plateau de 20 m ;
 - descente de 80 m.
 
-## 11. Stockage gratuit : ce qui va où
+## 11. Boutique et sauvegarde (étape 5)
+
+### Boutique en ligne « Bécane Shop » (nom fictif)
+
+- Un **ordinateur portable** sur un bureau du garage ouvre la boutique
+  (viser + E, ou bouton « Ouvrir la boutique » au tactile).
+- **Acheter** :
+  - les pièces du catalogue sont rangées par rayon (échappement, allumage,
+    admission, haut moteur) ;
+  - chaque fiche résume ce que fait la pièce, calculé à partir de ses
+    effets (« Bridé », « +15 % de puissance », « Coupure à 11 800 tr/min »…).
+- **Livraison physique**, comme dans My Summer Car : le colis arrive après
+  8 s sur la **palette** près de la porte. C'est une vraie pièce, qu'on porte
+  jusqu'à la moto.
+- **Vendre** : les pièces qui traînent dans le garage sont rachetées selon
+  leur état, entre 15 % et 65 % du prix neuf. Une pièce montée doit d'abord
+  être démontée ; la pièce tenue en main ne se vend pas.
+- L'écran est en HTML/CSS (souris, doigt, Échap pour fermer). Pendant qu'il
+  est ouvert, les **commandes du jeu sont coupées** et la souris est libérée
+  (`InputManager.setUiCapture`).
+- Règles pures et testées dans `economy/shop.ts` (prix de revente, fiches),
+  orchestration dans `economy/ShopSystem.ts`.
+
+### Sauvegarde automatique
+
+- **Contenu** : argent, position du joueur, position de la moto, pièces
+  montées et leur état, pièces posées dans le monde, colis en route (ils
+  seront sur la palette au chargement).
+- **Quand** : toutes les 20 s, quand l'onglet passe en arrière-plan, quand
+  la page se ferme, et à la demande (onglet DEV).
+- **Où** : `localStorage`, une seule clé de quelques Ko. L'écriture est
+  synchrone, donc elle aboutit même pendant la fermeture de la page (ce
+  n'est pas garanti avec IndexedDB). On passera à IndexedDB quand l'état du
+  monde grossira.
+- **Robuste** : `save/saveData.ts` valide tout. Une pièce inconnue, un
+  nombre absurde ou une autre version sont ignorés, et une sauvegarde
+  illisible équivaut à une nouvelle partie. Le format est versionné.
+- La sauvegarde est appliquée **après** l'initialisation de tous les
+  systèmes (`SaveSystem` est ajouté en dernier).
+
+### Onglet DEV
+
+- **Boutique** : livraison instantanée.
+- **Sauvegarde** : sauvegarder maintenant ; nouvelle partie (efface la
+  sauvegarde et recharge).
+- **Téléportation** : « Ordinateur (boutique) ».
+
+### Gagner de l'argent (prochaines étapes)
+
+Choix du joueur : livraisons en 50, réparations pour des voisins et
+revente de pièces. La revente est déjà là. Les livraisons et les
+réparations demandent le monde ouvert et des personnages.
+
+## 12. Stockage gratuit : ce qui va où
 
 Le principe : **Git ne contient que des fichiers légers.** Pas de Git LFS,
 dont le quota gratuit (stockage et bande passante mensuelle) s'épuise vite,
@@ -488,7 +542,7 @@ Opus) et instanciation.
    une fois avec `npm run hooks:install`.
 3. La CI échoue si un budget est dépassé.
 
-## 12. Hébergement gratuit (à mettre en place plus tard)
+## 13. Hébergement gratuit (à mettre en place plus tard)
 
 | Hébergeur | Points clés |
 |---|---|
@@ -501,7 +555,7 @@ gratuite), puis **Capacitor** pour des applications Android/iOS. Les outils
 sont gratuits ; seule la publication sur les stores est payante (Google Play :
 25 $ une fois ; App Store : 99 $/an et un Mac).
 
-## 13. Tests et intégration continue
+## 14. Tests et intégration continue
 
 - **Unitaires (Vitest)** : modules purs (bus d'événements, résolution
   dynamique, détection GPU, choix du profil…).
@@ -531,7 +585,7 @@ sont gratuits ; seule la publication sur les stores est payante (Google Play :
   performance se font **sur de vrais appareils** : PC, Android d'entrée ou de
   milieu de gamme, iPhone.
 
-## 14. Journal des décisions
+## 15. Journal des décisions
 
 | # | Décision | Raison |
 |---|---|---|
@@ -567,15 +621,19 @@ sont gratuits ; seule la publication sur les stores est payante (Google Play :
 | D30 | Registre de triches alimenté par chaque système (onglet DEV) | L'onglet grandit avec le jeu sans dépendre des systèmes ; règle écrite dans CLAUDE.md |
 | D31 | Résolution changée avant le rendu, période de chauffe de 6 s, remontées rares | Supprime le clignotement du démarrage (image vide après un redimensionnement, essais répétés) |
 | D32 | Un appui reste valable pendant l'image qui suit, même longue | Aucun appui perdu sur un appareil qui rame (images de plus de 200 ms) |
+| D33 | Sauvegarde dans localStorage (synchrone), format versionné et validé | Petite sauvegarde écrite même à la fermeture de la page ; une sauvegarde abîmée ne casse jamais le jeu |
+| D34 | Achats livrés physiquement sur une palette au garage | Immersion façon My Summer Car : la pièce achetée se porte et se monte comme les autres |
+| D35 | Écrans HTML qui coupent les commandes du jeu (`setUiCapture`) | Pas de déplacement ni de clic dans le monde pendant qu'on fait ses achats |
 
-## 15. Feuille de route
+## 16. Feuille de route
 
 0. ✅ **Fondations** : moteur, physique, boucle, profils de qualité, stats, tests, CI.
 1. ✅ **Joueur** : déplacement à la première personne, commandes clavier/souris, tactile et manette, prendre, porter et lancer.
 2. ✅ **Cyclomoteur conduisible** : physique à rayons, équilibre, moteur 2T bridé, monter/descendre, tableau de bord.
 3. ✅ **Garage, pièces et boîte de vitesses** : supermotard 50 à boîte 6, embrayage, kick, atelier (démontage/remontage), son moteur.
 4. ✅ **Réalisme et outils de test** : bridage réaliste, pot passage haut + cartouche, marques fictives, moto détaillée, reflets, onglet DEV, argent, colline d'essai.
-5. **Streaming** des morceaux du monde + origine flottante.
-6. **Économie, inventaire, sauvegarde** (IndexedDB) : acheter/vendre des pièces, garder sa moto d'une partie à l'autre.
-7. **Outils et usure** : clés de différentes tailles, usure des pièces en roulant, pannes.
-8. Ensuite : chaîne d'assets semi-réalistes, audio, PWA, Capacitor, contenu.
+5. ✅ **Boutique et sauvegarde** : ordinateur du garage, achat livré sur palette, revente selon l'état, sauvegarde automatique.
+6. **Monde ouvert** (streaming des morceaux + origine flottante) : routes, village, station-service.
+7. **Gagner sa vie** : livraisons en 50, réparations pour les voisins, achat d'épaves à démonter.
+8. **Outils et usure** : essence et mélange 2T, usure des pièces en roulant, pannes, clés de différentes tailles.
+9. Ensuite : vrais modèles 3D (proportions exactes), audio, PWA, Capacitor, contenu.

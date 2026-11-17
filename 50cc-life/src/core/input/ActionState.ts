@@ -23,6 +23,8 @@ export class ActionState {
   private readonly pressedAt = new Map<ButtonAction, { readonly time: number; readonly frame: number }>();
   /** Numéro de l'image en cours (voir beginFrame). */
   private frame = 0;
+  /** Un écran (boutique…) a pris les commandes : les appuis sont ignorés. */
+  private muted = false;
   private readonly moves = new Map<string, Vec2>();
   private readonly axes = new Map<AxisAction, Map<string, number>>();
   private lookYaw = 0;
@@ -32,6 +34,7 @@ export class ActionState {
 
   /** Une source (ex. « kb:Space ») tient ou relâche une action. */
   setButton(action: ButtonAction, source: string, down: boolean): void {
+    if (down && this.muted) return;
     let set = this.holders.get(action);
     if (down) {
       if (!set) {
@@ -67,7 +70,7 @@ export class ActionState {
 
   /** Vecteur de déplacement d'une source : x = droite, y = avant, dans [-1, 1]. */
   setMove(source: string, x: number, y: number): void {
-    if (x === 0 && y === 0) this.moves.delete(source);
+    if (this.muted || (x === 0 && y === 0)) this.moves.delete(source);
     else this.moves.set(source, { x, y });
   }
 
@@ -108,7 +111,7 @@ export class ActionState {
       sources = new Map();
       this.axes.set(axis, sources);
     }
-    if (value > 0) sources.set(source, Math.min(value, 1));
+    if (value > 0 && !this.muted) sources.set(source, Math.min(value, 1));
     else sources.delete(source);
   }
 
@@ -121,6 +124,7 @@ export class ActionState {
 
   /** Ajoute une rotation du regard (radians ; yaw > 0 = droite, pitch > 0 = bas). */
   addLook(yaw: number, pitch: number): void {
+    if (this.muted) return;
     this.lookYaw += yaw;
     this.lookPitch += pitch;
   }
@@ -141,6 +145,19 @@ export class ActionState {
   }
 
   /** Relâche tout (fenêtre qui perd le focus, onglet caché…). */
+  /**
+   * Coupe (ou rend) les commandes du jeu, par ex. pendant qu'un écran est
+   * ouvert : tout est relâché et les nouveaux appuis sont ignorés.
+   */
+  setMuted(on: boolean): void {
+    if (on) this.releaseAll();
+    this.muted = on;
+  }
+
+  get isMuted(): boolean {
+    return this.muted;
+  }
+
   releaseAll(): void {
     this.holders.clear();
     this.pressedAt.clear();

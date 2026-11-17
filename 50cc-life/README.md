@@ -6,7 +6,7 @@ première personne. Inspirations : My Summer Car, Mon Bazou.
 **Babylon.js · Havok · TypeScript · Vite** : 100 % gratuit, fonctionne dans le
 navigateur sur PC, Android et iOS.
 
-> État : **étape 4** (réalisme et outils de test).
+> État : **étape 5** (boutique et sauvegarde).
 >
 > - Le supermotard détaillé (VARONE SMX 50, marque fictive) a une boîte 6
 >   vitesses, un embrayage, il peut caler et démarre au kick.
@@ -18,6 +18,9 @@ navigateur sur PC, Android et iOS.
 > - Son moteur 2 temps synthétisé.
 > - Onglet DEV de triches (argent, téléportation, pièces…), porte-monnaie et
 >   colline d'essai.
+> - Boutique en ligne (ordinateur du garage) : les pièces achetées sont
+>   livrées sur une palette, et on peut revendre ses pièces.
+> - Sauvegarde automatique de la partie (argent, moto, pièces, position).
 
 ## Démarrer
 
@@ -66,6 +69,7 @@ Ouvrez cette adresse sur le téléphone.
 | Lancer | clic droit ou F | Lancer | RB |
 | Utiliser, monter sur la moto | E | bouton contextuel | Y |
 | **Démonter / remonter une pièce** | **maintenir E** en visant la pièce (ou en portant la pièce près de son emplacement) | maintenir le bouton contextuel | maintenir Y |
+| Boutique (ordinateur du garage) | E en visant l'ordinateur, Échap pour fermer | Ouvrir la boutique | Y |
 
 ### Sur le supermotard (boîte manuelle)
 

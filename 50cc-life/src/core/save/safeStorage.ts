@@ -1,7 +1,7 @@
 /**
  * Accès à localStorage qui ne plante jamais (navigation privée, stockage
- * bloqué, aperçu…). Réservé aux petites préférences (profil graphique…).
- * Les sauvegardes de partie utiliseront IndexedDB (étape ultérieure).
+ * bloqué, aperçu…). Sert aux préférences et à la sauvegarde de la partie
+ * (quelques Ko, voir save/SaveSystem.ts).
  */
 const PREFIX = '50cc-life:';
 
