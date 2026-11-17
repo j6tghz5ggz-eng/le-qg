@@ -41,12 +41,21 @@ export class DebugOverlay {
   constructor(
     private readonly ctx: GameContext,
     private readonly actions: readonly DebugAction[],
+    /** Lignes supplémentaires (ex. position du joueur). */
+    private readonly extraLines: () => string[] = () => [],
   ) {
     this.instrumentation = new SceneInstrumentation(ctx.scene);
     this.text = el('pre', { className: 'debug__stats' });
+    const actionBar = el('div', { className: 'debug__actions' });
+    for (const action of actions) {
+      const button = el('button', { className: 'hud-btn', text: action.label, attrs: { type: 'button' } });
+      button.addEventListener('click', () => action.run());
+      actionBar.appendChild(button);
+    }
     this.panel = el('div', { className: 'debug', attrs: { 'aria-label': 'Statistiques' } }, [
       this.text,
       this.createQualitySelect(),
+      actionBar,
     ]);
     this.panel.hidden = !import.meta.env.DEV;
 
@@ -57,14 +66,7 @@ export class DebugOverlay {
     });
     toggle.addEventListener('click', () => this.toggle());
 
-    const actionBar = el('div', { className: 'debug__actions' });
-    for (const action of actions) {
-      const button = el('button', { className: 'hud-btn hud-btn--wide', text: action.label, attrs: { type: 'button' } });
-      button.addEventListener('click', () => action.run());
-      actionBar.appendChild(button);
-    }
-
-    ctx.uiRoot.append(this.panel, toggle, actionBar);
+    ctx.uiRoot.append(this.panel, toggle);
     window.addEventListener('keydown', this.onKeyDown);
     ctx.scene.onAfterRenderObservable.add(() => this.refresh());
   }
@@ -97,6 +99,7 @@ export class DebugOverlay {
       `Physique    ${bodies} corps  ·  pas n°${scene.getStepId()}`,
       `Appareil    ${platform.os}${platform.isMobile ? ' (mobile)' : ''}  ·  GPU ${platform.gpuTier}`,
       `            ${shorten(platform.gpuRenderer, 44)}`,
+      ...this.extraLines(),
     ];
     this.text.textContent = lines.join('\n');
   }

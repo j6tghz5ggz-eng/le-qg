@@ -6,8 +6,8 @@ première personne. Inspirations : My Summer Car, Mon Bazou.
 **Babylon.js · Havok · TypeScript · Vite** : 100 % gratuit, fonctionne dans le
 navigateur sur PC, Android et iOS.
 
-> État : **étape 0** (fondations techniques). La scène actuelle est une scène
-> de test : sol, rampe, caisses physiques, caméra orbitale.
+> État : **étape 1** (le joueur). Scène de test : on se déplace à pied en vue
+> à la première personne, on entre dans un garage, on prend et on lance des objets.
 
 ## Démarrer
 
@@ -29,7 +29,7 @@ npm run dev:lan      # affiche une adresse du type http://192.168.x.x:5173
 
 Ouvrez cette adresse sur le téléphone.
 
-## Commandes
+## Scripts
 
 | Commande | Rôle |
 |---|---|
@@ -43,14 +43,20 @@ Ouvrez cette adresse sur le téléphone.
 | `npm run ci` | Tout vérifier d'un coup (sauf e2e) |
 | `npm run hooks:install` | Active le garde-fou anti-gros-fichiers avant chaque commit |
 
-## Scène de test : commandes
+## Commandes du jeu
 
-| Action | PC | Mobile |
-|---|---|---|
-| Tourner la caméra | clic gauche + glisser | 1 doigt |
-| Zoomer | molette | pincer |
-| Lâcher une caisse | touche **C** ou bouton | bouton |
-| Statistiques / qualité | **F3** ou bouton 📊 | bouton 📊 |
+| Action | Clavier / souris | Tactile | Manette |
+|---|---|---|---|
+| Se déplacer | ZQSD (AZERTY) / WASD, flèches | pouce gauche (joystick) | stick gauche |
+| Regarder | souris (cliquer pour la capturer) | glisser à droite | stick droit |
+| Courir | Maj | joystick poussé à fond | clic stick gauche |
+| Sauter | Espace | Sauter | A |
+| S'accroupir | C (maintenir) | Accroupir (bascule) | B |
+| Prendre / poser | clic gauche (maintenir) | Prendre / Lâcher | X |
+| Lancer | clic droit ou F | Lancer | RB |
+| Libérer la souris | Échap | | |
+| Statistiques / qualité | F3 ou 📊 | 📊 | |
+| Lâcher une caisse (test) | B | bouton dans le panneau 📊 | |
 
 ## Documentation
 

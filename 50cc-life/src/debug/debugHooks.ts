@@ -10,6 +10,17 @@ export interface DebugHooks {
   readonly stepId: number;
   readonly profile: string;
   readonly crateCount: number;
+  readonly scheme: string;
+  readonly player: {
+    readonly x: number;
+    readonly y: number;
+    readonly z: number;
+    readonly grounded: boolean;
+    readonly crouched: boolean;
+  };
+  readonly holding: boolean;
+  /** Nom de l'objet visé ou tenu. */
+  readonly focus: string | null;
   probeY(): number | null;
 }
 

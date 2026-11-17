@@ -252,22 +252,269 @@ select {
 }
 
 .debug__actions {
-  position: absolute;
-  right: calc(12px + var(--safe-right));
-  bottom: calc(12px + var(--safe-bottom));
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  margin-top: 8px;
 }
 
-.hud-btn--wide {
-  min-height: 52px;
-  padding: 0 18px;
-  font-weight: 600;
+.debug__actions .hud-btn {
+  min-height: 40px;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .loading,
-  .loading__fill {
+  .loading__fill,
+  .crosshair {
     transition: none;
   }
+}
+
+/* ---------- Couches plein écran (laissent passer les gestes vers le canvas) ---------- */
+#ui-root > .ui-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ui-layer button,
+.ui-layer [role='button'] {
+  pointer-events: auto;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 1.8em;
+  padding: 1px 7px;
+  border: 1px solid var(--ui-line);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  font: 600 0.82rem/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* ---------- Réticule et aide ---------- */
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.45);
+  transition: transform 0.12s ease, background-color 0.12s ease;
+}
+
+.crosshair.is-active {
+  transform: scale(2.2);
+  background: var(--ui-accent);
+}
+
+.crosshair.is-holding {
+  transform: scale(1.4);
+  background: transparent;
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.9);
+}
+
+.prompt {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 28px);
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  max-width: calc(100% - 32px);
+  text-align: center;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.prompt__label {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.prompt__hint {
+  color: var(--ui-ink);
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+}
+
+.prompt__label:empty,
+.prompt__hint:empty {
+  display: none;
+}
+
+/* ---------- Carte « Cliquez pour jouer » ---------- */
+.lock-hint {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(380px, calc(100% - 32px));
+  padding: 20px 22px;
+  border: 1px solid var(--ui-line);
+  border-radius: 14px;
+  background: var(--ui-bg);
+  color: var(--ui-ink);
+  text-align: left;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 5;
+}
+
+.lock-hint:hover {
+  border-color: var(--ui-accent);
+}
+
+.lock-hint__title {
+  display: block;
+  margin: 0 0 14px;
+  font-size: 1.3rem;
+  font-weight: 800;
+  text-align: center;
+  color: var(--ui-accent);
+}
+
+.lock-hint__keys {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 7px 14px;
+  margin: 0;
+  align-items: center;
+}
+
+.lock-hint__keys dt {
+  justify-self: end;
+}
+
+.lock-hint__keys dd {
+  margin: 0;
+  color: var(--ui-muted);
+}
+
+.lock-hint__fallback {
+  margin: 14px 0 0;
+  color: var(--ui-accent);
+  text-align: center;
+}
+
+.lock-hint.is-compact {
+  top: calc(12px + var(--safe-top));
+  transform: translateX(-50%);
+  padding: 10px 14px;
+  pointer-events: none;
+}
+
+.lock-hint.is-compact .lock-hint__title,
+.lock-hint.is-compact .lock-hint__keys {
+  display: none;
+}
+
+.lock-hint.is-compact .lock-hint__fallback {
+  margin: 0;
+}
+
+/* ---------- Commandes tactiles ---------- */
+.stick {
+  --stick-radius: 56px;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(var(--stick-radius) * 2);
+  height: calc(var(--stick-radius) * 2);
+  margin: calc(var(--stick-radius) * -1) 0 0 calc(var(--stick-radius) * -1);
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.stick__knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 52px;
+  height: 52px;
+  margin: -26px 0 0 -26px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.touch-buttons {
+  position: absolute;
+  right: calc(16px + var(--safe-right));
+  bottom: calc(18px + var(--safe-bottom));
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  grid-template-areas:
+    'crouch grab'
+    'throw jump';
+  gap: 12px;
+  align-items: end;
+  justify-items: end;
+}
+
+.touch-btn {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  background: rgba(14, 16, 19, 0.55);
+  color: var(--ui-ink);
+  font: 600 0.78rem/1.1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.touch-btn.is-pressed,
+.touch-btn[aria-pressed='true'] {
+  background: rgba(255, 176, 32, 0.45);
+  border-color: var(--ui-accent);
+}
+
+.touch-btn--jump {
+  grid-area: jump;
+  width: 84px;
+  height: 84px;
+  font-size: 0.9rem;
+}
+
+.touch-btn--grab {
+  grid-area: grab;
+  opacity: 0.45;
+}
+
+.touch-btn--grab.is-available {
+  opacity: 1;
+  border-color: var(--ui-accent);
+}
+
+.touch-btn--throw {
+  grid-area: throw;
+}
+
+.touch-btn--crouch {
+  grid-area: crouch;
+}
+
+.touch-hint {
+  position: absolute;
+  left: 50%;
+  top: calc(14px + var(--safe-top));
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 32px);
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: var(--ui-radius);
+  background: var(--ui-bg);
+  font-size: 0.85rem;
+  text-align: center;
 }
