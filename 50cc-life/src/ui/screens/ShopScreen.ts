@@ -15,12 +15,20 @@ import { t } from '../i18n';
 
 type Tab = 'buy' | 'sell';
 
+/**
+ * Au tactile, le doigt qui ouvre la boutique produit aussi un « clic » sur
+ * l'élément qui apparaît dessous (souvent un bouton Acheter) : on ignore les
+ * clics pendant ce court délai après l'ouverture.
+ */
+const GHOST_CLICK_MS = 450;
+
 export class ShopScreen {
   private readonly root: HTMLElement;
   private readonly balance: HTMLElement;
   private readonly list: HTMLElement;
   private readonly tabs = new Map<Tab, HTMLButtonElement>();
   private tab: Tab = 'buy';
+  private openedAt = 0;
   private readonly onKey = (event: KeyboardEvent): void => {
     if (event.code === 'Escape') {
       event.preventDefault();
@@ -57,6 +65,17 @@ export class ShopScreen {
     ]);
     this.root = el('div', { className: 'shop', attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': SHOP_NAME } }, [panel]);
     this.root.hidden = true;
+    // Clics fantômes juste après l'ouverture : bloqués avant d'atteindre les boutons.
+    this.root.addEventListener(
+      'click',
+      (event) => {
+        if (performance.now() - this.openedAt < GHOST_CLICK_MS) {
+          event.stopPropagation();
+          event.preventDefault();
+        }
+      },
+      true,
+    );
     // Clic sur le fond sombre : ferme.
     this.root.addEventListener('click', (event) => {
       if (event.target === this.root) this.close();
@@ -74,6 +93,7 @@ export class ShopScreen {
   open(): void {
     if (this.isOpen) return;
     this.input.setUiCapture(true);
+    this.openedAt = performance.now();
     this.root.hidden = false;
     window.addEventListener('keydown', this.onKey);
     this.show(this.tab);

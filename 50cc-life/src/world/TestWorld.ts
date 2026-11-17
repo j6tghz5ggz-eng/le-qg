@@ -75,6 +75,7 @@ export const HILL = { x: 30, width: 8, zStart: 0, rampLength: 80, plateau: 20, h
 export const TELEPORT_POINTS: ReadonlyArray<{ readonly id: string; readonly label: string; readonly position: Vector3; readonly yaw: number }> = [
   { id: 'start', label: 'Départ', position: PLAYER_SPAWN.position, yaw: 0 },
   { id: 'garage', label: 'Garage (moto)', position: new Vector3(-0.8, 0.15, 11.0), yaw: 0.9 },
+  { id: 'bike-right', label: 'Moto (côté échappement)', position: new Vector3(-0.3, 0.15, 12.9), yaw: 1.95 },
   { id: 'bench', label: 'Établi du garage', position: new Vector3(-2.4, 0.15, 12.0), yaw: -Math.PI / 2 },
   { id: 'computer', label: 'Ordinateur (boutique)', position: new Vector3(2.5, 0.15, 11.3), yaw: Math.PI / 2 },
   { id: 'road', label: "Route d'essai", position: new Vector3(-14, 0, -12), yaw: 0 },

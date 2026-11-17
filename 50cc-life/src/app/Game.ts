@@ -258,6 +258,7 @@ export class Game {
             wheelsOnGround: d.wheelsOnGround,
             gear: d.gear,
             running: d.running,
+            clutch: d.clutch,
           };
         },
         get bikeParts() {

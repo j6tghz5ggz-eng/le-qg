@@ -61,6 +61,8 @@ test.describe('supermotard au clavier (boîte manuelle)', () => {
 
   test('passer une vitesse sans embrayer est refusé', async ({ page }) => {
     await mountBike(page);
+    // En montant, le levier part tiré puis se relâche : on attend qu'il le soit.
+    await waitFor(page, (s) => (s.vehicle?.clutch ?? 1) < 0.1);
     await page.keyboard.press('KeyR');
     await expect(page.locator('.toast')).toContainText('embrayage');
     expect((await hooks(page)).vehicle?.gear).toBe('N');

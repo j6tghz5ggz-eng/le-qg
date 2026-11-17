@@ -275,6 +275,18 @@ function createSilencer(scene: Scene, def: PartDefinition, v: Extract<PartDefini
   return mesh;
 }
 
+/**
+ * Recalcule les volumes englobants du maillage ET de ses sous-maillages.
+ * Indispensable après avoir figé une rotation dans les sommets d'un
+ * maillage fusionné : sinon les sous-maillages gardent leurs anciens
+ * volumes et le rayon de visée passe à travers la pièce (bug de la
+ * cartouche impossible à viser).
+ */
+function refreshBounds(mesh: Mesh): void {
+  mesh.refreshBoundingInfo();
+  for (const subMesh of mesh.subMeshes ?? []) subMesh.refreshBoundingInfo();
+}
+
 // --- Haut moteur et périphériques ------------------------------------------
 
 const CAST: Rgb = [0.6, 0.6, 0.62]; // alu de fonderie
@@ -387,18 +399,23 @@ function createAirbox(scene: Scene, def: PartDefinition): Mesh {
   return assemble(def.id, pieces);
 }
 
-/** Boîtier CDI : boîtier à ailettes, connecteur, fils, pattes. */
+/**
+ * Boîtier CDI, monté debout contre le réservoir d'huile (face plate côté
+ * +x, ailettes vers l'extérieur -x) : boîtier, ailettes, connecteur, fils,
+ * pattes de fixation.
+ */
 function createCdi(scene: Scene, def: PartDefinition, v: Extract<PartDefinition['visual'], { kind: 'cdi' }>): Mesh {
   const shell = materialFor(scene, v.color, 0.2, 0.45);
+  const steel = materialFor(scene, STEEL, 1);
   const pieces: Piece[] = [
-    [box(scene, 'case', v3(0, 0, 0), 0.065, 0.028, 0.085), shell],
-    [box(scene, 'plug', v3(0, 0, -0.05), 0.04, 0.02, 0.015), materialFor(scene, [0.9, 0.9, 0.86], 0, 0.5)],
+    [box(scene, 'case', v3(0, 0, 0), 0.028, 0.065, 0.085), shell],
+    [box(scene, 'plug', v3(0.002, -0.012, -0.05), 0.02, 0.035, 0.015), materialFor(scene, [0.9, 0.9, 0.86], 0, 0.5)],
   ];
-  for (let i = 0; i < 4; i++) pieces.push([box(scene, 'fin', v3(-0.024 + i * 0.016, 0.017, 0.005), 0.004, 0.006, 0.07), shell]);
-  for (const sx of [-1, 1]) pieces.push([box(scene, 'tab', v3(sx * 0.04, -0.012, 0.03), 0.016, 0.003, 0.016), materialFor(scene, STEEL, 1)]);
+  for (let i = 0; i < 4; i++) pieces.push([box(scene, 'fin', v3(-0.017, -0.024 + i * 0.016, 0.005), 0.006, 0.004, 0.07), shell]);
+  for (const sy of [-1, 1]) pieces.push([box(scene, 'tab', v3(0.012, sy * 0.04, 0.03), 0.003, 0.016, 0.016), steel]);
   const wire = materialFor(scene, RUBBER, 0, 0.5);
   for (let i = 0; i < 3; i++) {
-    pieces.push([pipe(scene, 'wire', [v3(-0.01 + i * 0.01, 0, -0.057), v3(-0.012 + i * 0.012, -0.004, -0.075), v3(-0.015 + i * 0.015, -0.012, -0.09)], 0.0018, 6, 4), wire]);
+    pieces.push([pipe(scene, 'wire', [v3(0.002, -0.02 + i * 0.01, -0.057), v3(0.004, -0.03 + i * 0.008, -0.07), v3(0.008, -0.055 + i * 0.006, -0.08)], 0.0018, 6, 4), wire]);
   }
   return assemble(def.id, pieces);
 }
@@ -448,6 +465,7 @@ export function createPartMesh(scene: Scene, def: PartDefinition): Mesh {
       mesh = createCdi(scene, def, v);
       break;
   }
+  refreshBounds(mesh);
   mesh.receiveShadows = true;
   return mesh;
 }

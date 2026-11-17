@@ -171,14 +171,16 @@ export const SM50: BikeSpec = {
   },
   engineSlots: SM50_SLOTS,
   // Type Rieju MRT 50 (moteur type AM6) : réservoir de 6 L, graissage séparé
-  // (essence sans huile), réservoir d'huile d'environ 1,2 L ; la pompe dose
-  // au maximum ~2 % (1:50) à fond, beaucoup moins au ralenti.
+  // (essence sans huile), réservoir d'huile d'environ 1,2 L à gauche devant
+  // le réservoir d'essence ; la pompe dose au maximum ~2 % (1:50) à fond,
+  // beaucoup moins au ralenti.
   fuel: {
     tankLiters: 6,
     reserveLiters: 1,
     lubrication: { kind: 'injection', oilTankLiters: 1.2, idleRatio: 0.006, fullRatio: 0.02 },
     fuelCap: [0, 0.79, 0.3],
-    oilCap: [0.115, 0.665, -0.1],
+    // Réservoir d'huile à gauche, devant le réservoir d'essence (notice Rieju).
+    oilCap: [-0.07, 0.725, 0.41],
   },
   eyeLocal: [0, 1.38, -0.18],
   maxDismountSpeed: 2.5,

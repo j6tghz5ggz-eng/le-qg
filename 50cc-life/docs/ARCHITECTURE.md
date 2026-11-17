@@ -317,6 +317,10 @@ mobylettes.
     « dans » la forme physique de la moto, qui passe donc après ;
   - **aide à la visée** pour les petites pièces : la bougie compte comme
     visée si le rayon passe à moins de 3 cm.
+- **Volumes englobants** : après avoir figé une rotation dans les sommets
+  d'une pièce fusionnée (la cartouche), on recalcule aussi les volumes de ses
+  sous-maillages. Sans ça, le rayon de visée passait à travers la cartouche
+  et visait la moto (« Monter » au lieu de « Démonter »).
 - **Robustesse physique** : volume de collision et masse minimaux pour les
   petites pièces (sinon une bougie traverse le décor), et sol avec un volume
   de collision épais.
@@ -520,6 +524,14 @@ sources divergent, on garde la notice du constructeur.
 Repères : 2 % = 20 ml d'huile par litre d'essence. Consommation d'un 50
 2 temps : environ 3 L/100 km (2,9 relevés sur une Simson S51, environ 3 sur
 un MBK 51).
+
+**Implantation (Rieju MRT Pro SM 2021)** :
+- le réservoir d'huile est à **gauche, devant le réservoir d'essence**
+  (notice Rieju), derrière l'écope gauche ;
+- le **boîtier CDI est fixé contre le réservoir d'huile**, côté extérieur.
+  C'est une indication du joueur : aucune source publique trouvée. Pour le
+  démonter, on vise l'écope gauche à cet endroit (le rayon de visée passe à
+  travers les plastiques).
 
 Chaque modèle a sa fiche `fuel` dans `vehicles/bike/specs.ts` :
 contenance, réserve, graissage (`premix` + dosage, ou `injection` +

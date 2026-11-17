@@ -32,5 +32,7 @@ export const SM50_SLOTS: readonly SlotDefinition[] = [
   { id: 'silencer', name: 'Cartouche', accepts: 'silencer', requires: ['exhaust'], required: false, fasteners: 2, anchor: SILENCER_INLET },
   { id: 'carburetor', name: 'Carburateur', accepts: 'carburetor', requires: [], required: true, fasteners: 2, anchor: [-0.03, 0.25, -0.11] },
   { id: 'airFilter', name: 'Filtre à air', accepts: 'airFilter', requires: [], required: false, fasteners: 1, anchor: [0, 0.43, -0.27] },
-  { id: 'ignition', name: 'Allumage (CDI)', accepts: 'ignition', requires: [], required: true, fasteners: 2, anchor: [0.13, 0.5, -0.42] },
+  // Comme sur la Rieju MRT Pro SM 2021 : le CDI est fixé contre le réservoir
+  // d'huile, à gauche devant le réservoir d'essence (derrière l'écope gauche).
+  { id: 'ignition', name: 'Allumage (CDI)', accepts: 'ignition', requires: [], required: true, fasteners: 2, anchor: [-0.109, 0.64, 0.42] },
 ];

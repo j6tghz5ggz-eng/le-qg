@@ -43,6 +43,32 @@ test.describe('atelier au clavier', () => {
   });
 });
 
+test.describe('atelier : cartouche', () => {
+  test.skip(({ isMobile }) => isMobile, 'test clavier');
+
+  test('la cartouche se vise et se démonte (elle ne se fait pas voler la visée par la moto)', async ({ page }) => {
+    await startGame(page);
+    // Côté droit de la moto (côté échappement), via l'onglet DEV.
+    await page.locator('.debug__toggle').click();
+    await page.locator('.debug__tab[data-tab="dev"]').click();
+    await page.locator('[data-cheat="tp-bike-right"]').click();
+    await page.locator('.debug__toggle').click();
+    await waitFor(page, (s) => s.player.grounded && Math.abs(s.player.z - 12.9) < 0.3);
+    await waitStill(page);
+    await page.evaluate(() => {
+      const h = window.__50CC__!;
+      const s = h.slotPosition('silencer')!;
+      h.lookAt(s.x, s.y + 0.05, s.z + 0.2);
+    });
+    await waitFor(page, (s) => s.focus?.startsWith('Cartouche') ?? false);
+    await expect(page.locator('.prompt__hint')).toContainText('Démonter');
+    await page.keyboard.down('KeyE');
+    await waitFor(page, (s) => !s.bikeParts.includes('silencer'), 6000);
+    await page.keyboard.up('KeyE');
+    expect((await hooks(page)).bikeParts).toContain('exhaust');
+  });
+});
+
 test.describe('atelier au tactile', () => {
   test.skip(({ isMobile }) => !isMobile, 'test tactile');
 

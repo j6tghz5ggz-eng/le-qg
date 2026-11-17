@@ -31,6 +31,8 @@ export interface DebugHooks {
     readonly wheelsOnGround: number;
     readonly gear: string;
     readonly running: boolean;
+    /** Levier d'embrayage (0 = relâché, 1 = tiré). */
+    readonly clutch: number;
   } | null;
   /** Emplacements occupés du moteur de la première moto. */
   readonly bikeParts: string[];
