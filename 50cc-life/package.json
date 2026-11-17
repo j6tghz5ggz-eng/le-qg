@@ -1,0 +1,34 @@
+{
+  "name": "50cc-life",
+  "private": true,
+  "version": "0.0.1",
+  "description": "50cc LIFE — simulateur de vie et de mécanique autour des 50cc, en 3D (Babylon.js + Havok).",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "vite",
+    "dev:lan": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "vite build && playwright test --trace off",
+    "check:sizes": "node tools/check-sizes.mjs",
+    "hooks:install": "git config core.hooksPath 50cc-life/.githooks",
+    "ci": "npm run typecheck && npm test && npm run build && npm run check:sizes"
+  },
+  "dependencies": {
+    "@babylonjs/core": "9.37.0",
+    "@babylonjs/havok": "1.3.14"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "@types/node": "22.20.5",
+    "typescript": "7.0.2",
+    "vite": "8.3.8",
+    "vitest": "5.1.0"
+  }
+}

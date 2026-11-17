@@ -1,0 +1,1065 @@
+/*
+ * Styles de l'interface (HTML/CSS par-dessus le canvas 3D).
+ * Mobile d'abord : zones tactiles de 44 px minimum, marges de sécurité
+ * (encoche, barre d'accueil iOS), aucun défilement ni zoom de page.
+ */
+:root {
+  --ui-bg: rgba(14, 16, 19, 0.72);
+  --ui-bg-solid: #121417;
+  --ui-ink: #f2f1ee;
+  --ui-muted: #a9adb3;
+  --ui-accent: #ffb020;
+  --ui-danger: #ff5a4f;
+  --ui-line: rgba(255, 255, 255, 0.14);
+  --ui-radius: 10px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ui-bg-solid);
+  color: var(--ui-ink);
+  font: 15px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+#game-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  outline: none;
+  /* Les gestes tactiles vont au jeu, pas au navigateur (pas de zoom/défilement). */
+  touch-action: none;
+}
+
+#ui-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none; /* le canvas reçoit les clics… */
+}
+
+#ui-root > * {
+  pointer-events: auto; /* …sauf sur les éléments d'interface */
+}
+
+button,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+.btn,
+.hud-btn {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-radius);
+  background: var(--ui-bg);
+  color: var(--ui-ink);
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.btn:hover,
+.hud-btn:hover {
+  border-color: var(--ui-accent);
+}
+
+.btn:active,
+.hud-btn:active {
+  transform: scale(0.97);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* ---------- Écran de chargement ---------- */
+.loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 16px;
+  background: radial-gradient(ellipse at 50% 40%, #23272d 0%, var(--ui-bg-solid) 70%);
+  transition: opacity 0.4s ease;
+  z-index: 10;
+}
+
+/* Sélecteur avec #ui-root : doit l'emporter sur « #ui-root > * { pointer-events: auto } »,
+   sinon l'écran en fondu intercepte les premiers gestes. */
+#ui-root > .loading.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.loading__title {
+  margin: 0;
+  font-size: clamp(2.4rem, 9vw, 4.5rem);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  font-style: italic;
+}
+
+.loading__title span {
+  color: var(--ui-accent);
+}
+
+.loading__bar {
+  width: min(320px, 80vw);
+  height: 6px;
+  border-radius: 3px;
+  background: var(--ui-line);
+  overflow: hidden;
+}
+
+.loading__fill {
+  height: 100%;
+  background: var(--ui-accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.25s ease;
+}
+
+.loading__label {
+  margin: 0;
+  color: var(--ui-muted);
+  font-size: 0.9rem;
+  min-height: 1.4em;
+}
+
+/* ---------- Erreur bloquante ---------- */
+.fatal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: calc(16px + var(--safe-top)) 16px calc(16px + var(--safe-bottom));
+  background: var(--ui-bg-solid);
+  text-align: center;
+  z-index: 20;
+  user-select: text;
+}
+
+.fatal h1 {
+  margin: 0;
+  color: var(--ui-danger);
+  font-size: 1.4rem;
+}
+
+.fatal p {
+  margin: 0;
+  max-width: 34rem;
+}
+
+.fatal__detail {
+  max-width: min(40rem, 100%);
+  overflow: auto;
+  padding: 10px;
+  border-radius: var(--ui-radius);
+  background: #000;
+  color: var(--ui-muted);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  text-align: left;
+}
+
+/* ---------- Message temporaire ---------- */
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: calc(80px + var(--safe-bottom));
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 10px 16px;
+  border-radius: var(--ui-radius);
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-line);
+  z-index: 15;
+}
+
+/* ---------- Débogage ---------- */
+.debug {
+  position: absolute;
+  top: calc(8px + var(--safe-top));
+  left: calc(8px + var(--safe-left));
+  max-width: calc(100% - 80px - var(--safe-left) - var(--safe-right));
+  padding: 8px 10px;
+  border-radius: var(--ui-radius);
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-line);
+  font: 12px/1.35 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+.debug__stats {
+  margin: 0 0 8px;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.debug__quality {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.debug__quality select {
+  min-height: 36px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-line);
+  background: #1c1f24;
+}
+
+.debug__toggle {
+  position: absolute;
+  top: calc(8px + var(--safe-top));
+  right: calc(8px + var(--safe-right));
+  padding: 0;
+}
+
+.debug__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.debug__actions .hud-btn {
+  min-height: 40px;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading,
+  .loading__fill,
+  .crosshair {
+    transition: none;
+  }
+}
+
+/* ---------- Couches plein écran (laissent passer les gestes vers le canvas) ---------- */
+#ui-root > .ui-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ui-layer button,
+.ui-layer [role='button'] {
+  pointer-events: auto;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 1.8em;
+  padding: 1px 7px;
+  border: 1px solid var(--ui-line);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  font: 600 0.82rem/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* ---------- Réticule et aide ---------- */
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.45);
+  transition: transform 0.12s ease, background-color 0.12s ease;
+}
+
+.crosshair.is-active {
+  transform: scale(2.2);
+  background: var(--ui-accent);
+}
+
+.crosshair.is-holding {
+  transform: scale(1.4);
+  background: transparent;
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.9);
+}
+
+.prompt {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 28px);
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  max-width: calc(100% - 32px);
+  text-align: center;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.prompt__label {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.prompt__hint {
+  color: var(--ui-ink);
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+}
+
+.prompt__label:empty,
+.prompt__hint:empty {
+  display: none;
+}
+
+/* ---------- Carte « Cliquez pour jouer » ---------- */
+.lock-hint {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(380px, calc(100% - 32px));
+  padding: 20px 22px;
+  border: 1px solid var(--ui-line);
+  border-radius: 14px;
+  background: var(--ui-bg);
+  color: var(--ui-ink);
+  text-align: left;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 5;
+}
+
+.lock-hint:hover {
+  border-color: var(--ui-accent);
+}
+
+.lock-hint__title {
+  display: block;
+  margin: 0 0 14px;
+  font-size: 1.3rem;
+  font-weight: 800;
+  text-align: center;
+  color: var(--ui-accent);
+}
+
+.lock-hint__keys {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 7px 14px;
+  margin: 0;
+  align-items: center;
+}
+
+.lock-hint__keys dt {
+  justify-self: end;
+}
+
+.lock-hint__keys dd {
+  margin: 0;
+  color: var(--ui-muted);
+}
+
+.lock-hint__fallback {
+  margin: 14px 0 0;
+  color: var(--ui-accent);
+  text-align: center;
+}
+
+.lock-hint.is-compact {
+  top: calc(12px + var(--safe-top));
+  transform: translateX(-50%);
+  padding: 10px 14px;
+  pointer-events: none;
+}
+
+.lock-hint.is-compact .lock-hint__title,
+.lock-hint.is-compact .lock-hint__keys {
+  display: none;
+}
+
+.lock-hint.is-compact .lock-hint__fallback {
+  margin: 0;
+}
+
+/* ---------- Commandes tactiles ---------- */
+.stick {
+  --stick-radius: 56px;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(var(--stick-radius) * 2);
+  height: calc(var(--stick-radius) * 2);
+  margin: calc(var(--stick-radius) * -1) 0 0 calc(var(--stick-radius) * -1);
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.stick__knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 52px;
+  height: 52px;
+  margin: -26px 0 0 -26px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.touch-buttons {
+  position: absolute;
+  right: calc(16px + var(--safe-right));
+  bottom: calc(18px + var(--safe-bottom));
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  grid-template-areas:
+    'crouch grab'
+    'throw jump';
+  gap: 12px;
+  align-items: end;
+  justify-items: end;
+}
+
+.touch-btn {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  background: rgba(14, 16, 19, 0.55);
+  color: var(--ui-ink);
+  font: 600 0.78rem/1.1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.touch-btn.is-pressed,
+.touch-btn[aria-pressed='true'] {
+  background: rgba(255, 176, 32, 0.45);
+  border-color: var(--ui-accent);
+}
+
+.touch-btn--jump {
+  grid-area: jump;
+  width: 84px;
+  height: 84px;
+  font-size: 0.9rem;
+}
+
+.touch-btn--grab {
+  grid-area: grab;
+  opacity: 0.45;
+}
+
+.touch-btn--grab.is-available {
+  opacity: 1;
+  border-color: var(--ui-accent);
+}
+
+.touch-btn--throw {
+  grid-area: throw;
+}
+
+.touch-btn--crouch {
+  grid-area: crouch;
+}
+
+.touch-hint {
+  position: absolute;
+  left: 50%;
+  top: calc(14px + var(--safe-top));
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 32px);
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: var(--ui-radius);
+  background: var(--ui-bg);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+/* ---------- Bouton contextuel tactile ---------- */
+.touch-btn--use {
+  grid-area: use;
+  border-color: var(--ui-accent);
+  background: rgba(255, 176, 32, 0.28);
+}
+
+.touch-buttons {
+  grid-template-areas:
+    'use use'
+    'crouch grab'
+    'throw jump';
+}
+
+/* ---------- Tableau de bord ---------- */
+.dash {
+  position: absolute;
+  left: 50%;
+  bottom: calc(14px + var(--safe-bottom));
+  transform: translateX(-50%);
+  width: min(260px, calc(100% - 32px));
+  padding: 10px 14px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--ui-line);
+  background: var(--ui-bg);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash__main {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+}
+
+.dash__speed {
+  font-size: 2.4rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.dash__unit {
+  color: var(--ui-muted);
+  font-weight: 600;
+}
+
+.dash__rpm {
+  height: 6px;
+  margin-top: 8px;
+  border-radius: 3px;
+  background: var(--ui-line);
+  overflow: hidden;
+}
+
+.dash__rpm-fill {
+  height: 100%;
+  background: var(--ui-accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.1s linear;
+}
+
+.dash__rpm-fill.is-red {
+  background: var(--ui-danger);
+}
+
+.dash__meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  color: var(--ui-muted);
+  font-size: 0.78rem;
+}
+
+.dash__keys {
+  margin: 8px 0 0;
+  color: var(--ui-muted);
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+/* Écran étroit (téléphone en portrait) : en haut, loin des pouces. */
+@media (max-width: 700px) {
+  .dash {
+    top: calc(10px + var(--safe-top));
+    bottom: auto;
+    width: 170px;
+  }
+}
+
+/* ---------- Tableau de bord : rapport et état moteur ---------- */
+.dash__main {
+  gap: 14px;
+}
+
+.dash__speed-block {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.dash__gear {
+  min-width: 1.6em;
+  padding: 2px 8px;
+  border-radius: 8px;
+  border: 2px solid var(--ui-accent);
+  color: var(--ui-accent);
+  font-size: 1.9rem;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+}
+
+.dash__gear.is-neutral {
+  border-color: var(--ok, #34d399);
+  color: var(--ok, #34d399);
+}
+
+.dash__status.is-off {
+  color: var(--ui-danger);
+  font-weight: 700;
+}
+
+/* ---------- Commandes tactiles de conduite ---------- */
+.touch-ride {
+  position: absolute;
+  right: calc(16px + var(--safe-right));
+  bottom: calc(110px + var(--safe-bottom));
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  grid-template-areas:
+    'engine clutch'
+    'down up';
+  gap: 12px;
+}
+
+.touch-btn--engine {
+  grid-area: engine;
+}
+
+.touch-btn--engine.is-attention {
+  border-color: var(--ui-accent);
+  background: rgba(255, 176, 32, 0.3);
+}
+
+.touch-btn--clutch {
+  grid-area: clutch;
+}
+
+.touch-btn--gear-up,
+.touch-btn--gear-down {
+  font-size: 1.6rem;
+  font-weight: 800;
+}
+
+.touch-btn--gear-up {
+  grid-area: up;
+}
+
+.touch-btn--gear-down {
+  grid-area: down;
+}
+
+/* ---------- Panneau de débogage : réglages ---------- */
+.debug__toggles {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.debug__toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+}
+
+/* ---------- Action à maintenir (dévisser…) ---------- */
+.hold-ring {
+  --p: 0;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border-radius: 50%;
+  background: conic-gradient(var(--ui-accent) calc(var(--p) * 1turn), rgba(255, 255, 255, 0.18) 0);
+  -webkit-mask: radial-gradient(circle, transparent 12px, #000 13px);
+  mask: radial-gradient(circle, transparent 12px, #000 13px);
+}
+
+.touch-btn--use.is-hold {
+  --p: 0;
+  background: linear-gradient(to top, rgba(255, 176, 32, 0.75) calc(var(--p) * 100%), rgba(14, 16, 19, 0.55) 0);
+}
+
+/* ---------- Panneau de débogage : onglets Infos / DEV ---------- */
+.debug {
+  max-height: calc(100% - 16px - var(--safe-top) - var(--safe-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.debug__tabs {
+  display: flex;
+  gap: 4px;
+  margin: -2px 0 8px;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.debug__tab {
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-line);
+  background: transparent;
+  color: inherit;
+  font: 600 13px/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  cursor: pointer;
+}
+
+.debug__tab.is-active {
+  background: var(--ui-accent);
+  border-color: var(--ui-accent);
+  color: #111;
+}
+
+.debug__dev {
+  width: min(420px, calc(100vw - 100px));
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.debug__hint {
+  margin: 0 0 6px;
+  opacity: 0.7;
+  font-size: 12px;
+}
+
+.debug__group h3 {
+  margin: 10px 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ui-accent);
+}
+
+.debug__cheats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.debug__cheats .hud-btn {
+  min-height: 38px;
+  padding: 0 12px;
+  font: 500 13px/1.1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.debug__cheat-toggle {
+  flex-basis: 100%;
+}
+
+.debug__choice {
+  display: flex;
+  gap: 6px;
+  flex-basis: 100%;
+}
+
+.debug__choice select {
+  flex: 1;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-line);
+  background: #1c1f24;
+  color: inherit;
+}
+
+/* ---------- Argent ---------- */
+.money {
+  position: absolute;
+  top: calc(8px + var(--safe-top));
+  right: calc(64px + var(--safe-right));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: 8px 12px;
+  border-radius: var(--ui-radius);
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-line);
+  font: 700 17px/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.money__delta {
+  max-height: 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: #6fdc8c;
+  transition: max-height 0.2s ease;
+}
+
+.money__delta.is-loss {
+  color: #ff7a6b;
+}
+
+.money.is-changed .money__delta {
+  max-height: 20px;
+  margin-top: 4px;
+}
+
+/* ---------- Boutique en ligne (écran plein) ---------- */
+.shop {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(12px + var(--safe-top)) calc(12px + var(--safe-right)) calc(12px + var(--safe-bottom)) calc(12px + var(--safe-left));
+  background: rgba(4, 6, 9, 0.6);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.shop[hidden] {
+  display: none;
+}
+
+.shop__panel {
+  display: flex;
+  flex-direction: column;
+  width: min(640px, 100%);
+  max-height: 100%;
+  border-radius: 14px;
+  background: var(--ui-bg-solid);
+  border: 1px solid var(--ui-line);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.shop__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--ui-accent);
+  color: #111;
+}
+
+.shop__logo {
+  font: italic 900 20px/1 Arial, Helvetica, sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.shop__wallet {
+  margin-left: auto;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.shop__balance {
+  font-weight: 800;
+}
+
+.shop__close {
+  min-width: 40px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.15);
+  color: #111;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.shop__tabs {
+  display: flex;
+  gap: 6px;
+  padding: 10px 14px 0;
+}
+
+.shop__tab {
+  flex: 1;
+  min-height: 42px;
+  border-radius: 10px 10px 0 0;
+  border: 1px solid var(--ui-line);
+  border-bottom: 0;
+  background: transparent;
+  color: inherit;
+  font: 600 15px/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  cursor: pointer;
+}
+
+.shop__tab.is-active {
+  background: #1c2027;
+  color: var(--ui-accent);
+}
+
+.shop__list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 14px 14px;
+  background: #1c2027;
+  margin: 0 14px 14px;
+  border-radius: 0 0 10px 10px;
+  border: 1px solid var(--ui-line);
+  border-top: 0;
+}
+
+.shop__section {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-accent);
+}
+
+.shop__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.shop__info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.shop__detail {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.shop__price {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.shop__action {
+  min-width: 96px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--ui-accent);
+  color: #111;
+  font: 700 14px/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  cursor: pointer;
+}
+
+.shop__action:disabled {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.5);
+  cursor: default;
+}
+
+.shop__hint,
+.shop__empty {
+  margin: 12px 0 4px;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+@media (max-width: 520px) {
+  .shop {
+    padding: 0;
+  }
+
+  .shop__panel {
+    height: 100%;
+    border-radius: 0;
+  }
+
+  .shop__row {
+    flex-wrap: wrap;
+  }
+
+  .shop__info {
+    flex-basis: 100%;
+  }
+
+  .shop__price {
+    margin-left: auto;
+  }
+}
+
+/* ---------- Tableau de bord : jauge d'essence et voyants ---------- */
+.dash__fuel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.dash__fuel-label {
+  opacity: 0.6;
+}
+
+.dash__fuel-bar {
+  position: relative;
+  width: 90px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+
+.dash__fuel-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  background: #e8eaed;
+}
+
+.dash__fuel-fill.is-low {
+  background: #ffb020;
+}
+
+.dash__light {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #ffb020;
+  color: #111;
+}
+
+.dash__light--oil {
+  background: #ff5a45;
+}
