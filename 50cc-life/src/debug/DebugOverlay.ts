@@ -1,6 +1,8 @@
 /**
- * Panneau de débogage : statistiques de rendu, choix du profil de qualité
- * et actions de test. F3 (ou le bouton 📊) l'affiche ou le masque.
+ * Panneau de débogage, F3 (ou le bouton 📊) l'affiche ou le masque. Deux onglets :
+ * - Infos : statistiques de rendu, profil de qualité, réglages ;
+ * - DEV : les triches (argent, téléportation, moto, pièces…), fournies par
+ *   les systèmes via `ctx.cheats` (voir CheatRegistry).
  *
  * Les statistiques sont mises à jour 4 fois par seconde seulement :
  * écrire dans le DOM à chaque image coûterait du temps sur mobile.
@@ -10,8 +12,10 @@ import type { PhysicsEngine } from '@babylonjs/core/Physics/v2/physicsEngine';
 import type { GameContext } from '../app/GameContext';
 import { QualityManager } from '../core/quality/QualityManager';
 import { QUALITY_IDS, isQualityId } from '../core/quality/qualityProfiles';
+import { readPref, writePref } from '../core/save/safeStorage';
 import { el } from '../ui/dom';
 import { t } from '../ui/i18n';
+import type { Cheat } from './CheatRegistry';
 
 export interface DebugToggle {
   readonly label: string;
@@ -19,19 +23,20 @@ export interface DebugToggle {
   set(value: boolean): void;
 }
 
-export interface DebugAction {
-  readonly label: string;
-  /** Touche clavier (KeyboardEvent.code), ex. « KeyC ». */
-  readonly code?: string;
-  run(): void;
-}
+type Tab = 'info' | 'dev';
+const TAB_PREF = 'debugTab';
 
 const REFRESH_MS = 250;
 
 export class DebugOverlay {
   private readonly panel: HTMLElement;
   private readonly text: HTMLElement;
+  private readonly infoPage: HTMLElement;
+  private readonly devPage: HTMLElement;
+  private readonly tabButtons = new Map<Tab, HTMLButtonElement>();
   private readonly instrumentation: SceneInstrumentation;
+  private readonly devToggles: Array<{ input: HTMLInputElement; cheat: Extract<Cheat, { kind: 'toggle' }> }> = [];
+  private tab: Tab;
   private lastRefresh = 0;
   private readonly onKeyDown = (event: KeyboardEvent): void => {
     if (event.code === 'F3') {
@@ -41,24 +46,18 @@ export class DebugOverlay {
     }
     const target = event.target as HTMLElement | null;
     if (target && /^(INPUT|SELECT|TEXTAREA)$/.test(target.tagName)) return;
-    for (const action of this.actions) if (action.code === event.code) action.run();
+    const cheat = this.ctx.cheats.byCode(event.code);
+    if (cheat?.kind === 'action') cheat.run();
   };
 
   constructor(
     private readonly ctx: GameContext,
-    private readonly actions: readonly DebugAction[],
     /** Lignes supplémentaires (ex. position du joueur). */
     private readonly extraLines: () => string[] = () => [],
     toggles: readonly DebugToggle[] = [],
   ) {
     this.instrumentation = new SceneInstrumentation(ctx.scene);
     this.text = el('pre', { className: 'debug__stats' });
-    const actionBar = el('div', { className: 'debug__actions' });
-    for (const action of actions) {
-      const button = el('button', { className: 'hud-btn', text: action.label, attrs: { type: 'button' } });
-      button.addEventListener('click', () => action.run());
-      actionBar.appendChild(button);
-    }
     const toggleList = el('div', { className: 'debug__toggles' });
     toggles.forEach((toggle, index) => {
       const input = el('input', { attrs: { type: 'checkbox', id: `debug-toggle-${index}` } });
@@ -66,13 +65,22 @@ export class DebugOverlay {
       input.addEventListener('change', () => toggle.set(input.checked));
       toggleList.appendChild(el('label', { className: 'debug__toggle-row', attrs: { for: input.id } }, [input, document.createTextNode(` ${toggle.label}`)]));
     });
-    this.panel = el('div', { className: 'debug', attrs: { 'aria-label': 'Statistiques' } }, [
-      this.text,
-      this.createQualitySelect(),
-      toggleList,
-      actionBar,
-    ]);
+    this.infoPage = el('div', { className: 'debug__page' }, [this.text, this.createQualitySelect(), toggleList]);
+    this.devPage = el('div', { className: 'debug__page debug__dev' });
+    this.renderDev();
+    ctx.cheats.onChange(() => this.renderDev());
+
+    const tabs = el('div', { className: 'debug__tabs', attrs: { role: 'tablist' } });
+    for (const [id, label] of [['info', t('debug.tabInfo')], ['dev', t('debug.tabDev')]] as const) {
+      const button = el('button', { className: 'debug__tab', text: label, attrs: { type: 'button', role: 'tab', 'data-tab': id } });
+      button.addEventListener('click', () => this.showTab(id));
+      this.tabButtons.set(id, button);
+      tabs.appendChild(button);
+    }
+    this.panel = el('div', { className: 'debug', attrs: { 'aria-label': 'Panneau de débogage' } }, [tabs, this.infoPage, this.devPage]);
     this.panel.hidden = !import.meta.env.DEV;
+    this.tab = readPref(TAB_PREF) === 'dev' ? 'dev' : 'info';
+    this.showTab(this.tab);
 
     const toggle = el('button', {
       className: 'hud-btn debug__toggle',
@@ -86,8 +94,61 @@ export class DebugOverlay {
     ctx.scene.onAfterRenderObservable.add(() => this.refresh());
   }
 
+  showTab(tab: Tab): void {
+    this.tab = tab;
+    writePref(TAB_PREF, tab);
+    this.infoPage.hidden = tab !== 'info';
+    this.devPage.hidden = tab !== 'dev';
+    for (const [id, button] of this.tabButtons) {
+      button.classList.toggle('is-active', id === tab);
+      button.setAttribute('aria-selected', String(id === tab));
+    }
+    if (tab === 'dev') this.syncDevToggles();
+  }
+
+  /** Onglet DEV : un bloc par groupe de triches. */
+  private renderDev(): void {
+    this.devPage.replaceChildren(el('p', { className: 'debug__hint', text: t('debug.devHint') }));
+    this.devToggles.length = 0;
+    for (const group of this.ctx.cheats.list()) {
+      const body = el('div', { className: 'debug__cheats' });
+      for (const cheat of group.cheats) body.appendChild(this.renderCheat(cheat));
+      this.devPage.appendChild(el('section', { className: 'debug__group' }, [el('h3', { text: group.title }), body]));
+    }
+  }
+
+  private renderCheat(cheat: Cheat): HTMLElement {
+    switch (cheat.kind) {
+      case 'action': {
+        const label = cheat.code ? `${cheat.label} (${cheat.code.replace(/^Key/, '')})` : cheat.label;
+        const button = el('button', { className: 'hud-btn', text: label, attrs: { type: 'button', 'data-cheat': cheat.id } });
+        button.addEventListener('click', () => cheat.run());
+        return button;
+      }
+      case 'toggle': {
+        const input = el('input', { attrs: { type: 'checkbox', 'data-cheat': cheat.id } });
+        input.checked = cheat.get();
+        input.addEventListener('change', () => cheat.set(input.checked));
+        this.devToggles.push({ input, cheat });
+        return el('label', { className: 'debug__toggle-row debug__cheat-toggle' }, [input, document.createTextNode(` ${cheat.label}`)]);
+      }
+      case 'choice': {
+        const select = el('select', { attrs: { 'aria-label': cheat.label, 'data-cheat': cheat.id } });
+        for (const option of cheat.options()) select.appendChild(el('option', { text: option.label, attrs: { value: option.value } }));
+        const button = el('button', { className: 'hud-btn', text: cheat.button, attrs: { type: 'button' } });
+        button.addEventListener('click', () => cheat.run(select.value));
+        return el('div', { className: 'debug__choice' }, [select, button]);
+      }
+    }
+  }
+
+  private syncDevToggles(): void {
+    for (const { input, cheat } of this.devToggles) input.checked = cheat.get();
+  }
+
   toggle(): void {
     this.panel.hidden = !this.panel.hidden;
+    if (!this.panel.hidden && this.tab === 'dev') this.syncDevToggles();
   }
 
   dispose(): void {
@@ -97,7 +158,7 @@ export class DebugOverlay {
 
   private refresh(): void {
     const now = performance.now();
-    if (this.panel.hidden || now - this.lastRefresh < REFRESH_MS) return;
+    if (this.panel.hidden || this.tab !== 'info' || now - this.lastRefresh < REFRESH_MS) return;
     this.lastRefresh = now;
 
     const { engine, scene, quality, platform } = this.ctx;

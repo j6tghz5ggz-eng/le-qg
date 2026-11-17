@@ -1,8 +1,8 @@
 /**
  * Petite API exposée sur window.__50CC__, utilisée par les tests
  * automatiques (Playwright) et pratique dans la console du navigateur.
- * Lecture seule, sauf lookAt (oriente le regard) : rien qui permette de
- * tricher sur la progression.
+ * Lecture seule, sauf lookAt (oriente le regard). Les triches passent par
+ * l'onglet DEV du panneau de débogage (CheatRegistry), pas par ici.
  */
 import type { GameState } from '../app/events';
 
@@ -34,6 +34,8 @@ export interface DebugHooks {
   } | null;
   /** Emplacements occupés du moteur de la première moto. */
   readonly bikeParts: string[];
+  /** Solde du porte-monnaie (€). */
+  readonly money: number;
   slotPosition(slot: string): { x: number; y: number; z: number } | null;
   /** Pièces posées dans le monde. */
   looseParts(): Array<{ name: string; x: number; y: number; z: number }>;

@@ -49,6 +49,8 @@ export interface GameEvents {
     readonly manual: boolean;
     readonly autoClutch: boolean;
   };
+  /** Le solde du porte-monnaie a changé (delta = 0 : affichage initial). */
+  'money:changed': { readonly balance: number; readonly delta: number };
   /** Message court à afficher (ex. « Ralentissez pour descendre »). */
   'ui:notice': { readonly message: string };
 }

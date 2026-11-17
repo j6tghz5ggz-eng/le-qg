@@ -26,7 +26,7 @@ import type { Bike } from '../vehicles/bike/Bike';
 import type { ShadowHost, VehicleSystem } from '../vehicles/VehicleSystem';
 import { EngineAssembly, createPart, stockSm50, type PartInstance } from './EngineAssembly';
 import { createPartMesh, getGhostMaterial } from './partMeshes';
-import { PART_CATALOG, type PartDefinition } from './parts';
+import { PART_CATALOG, PARTS, type PartDefinition } from './parts';
 import type { SlotDefinition } from './slots';
 
 export interface SparePart {
@@ -56,6 +56,14 @@ interface InstallCandidate {
   readonly blocker: string | null;
 }
 
+/** Kit de débridage complet (triche) : emplacement → pièce. */
+const RACING_KIT: ReadonlyArray<readonly [string, string]> = [
+  ['ignition', 'cdi-free'],
+  ['exhaust', 'exhaust-racing'],
+  ['silencer', 'silencer-racing'],
+  ['carburetor', 'carb-17'],
+];
+
 /** Distance max entre la pièce portée et son emplacement pour la remonter (m). */
 const INSTALL_DISTANCE = 0.85;
 /**
@@ -74,6 +82,8 @@ export class MechanicsSystem implements GameSystem {
   private ghostKey = '';
   private candidate: InstallCandidate | null = null;
   private candidateAction: HoldAction | null = null;
+  /** Triche « moteur DEV » : couple ×2,5, aucun bridage. */
+  private devEngine = false;
 
   constructor(
     private readonly vehicles: VehicleSystem,
@@ -94,6 +104,89 @@ export class MechanicsSystem implements GameSystem {
       this.refreshStats(rig);
     }
     for (const spare of this.spares) this.spawnLoose(createPart(spare.defId, spare.condition), spare.position);
+    this.registerCheats();
+  }
+
+  private registerCheats(): void {
+    const cheats = this.ctx.cheats;
+    cheats.add('Mécanique', {
+      kind: 'action',
+      id: 'repair-all',
+      label: 'Tout remettre à neuf',
+      run: () => this.cheatRebuild((engine) => {
+        for (const [, part] of engine.entries()) part.condition = 1;
+      }, t('cheat.repaired')),
+    });
+    cheats.add('Mécanique', {
+      kind: 'action',
+      id: 'racing-kit',
+      label: 'Kit débridage complet',
+      run: () => this.cheatRebuild((engine) => {
+        for (const [slot, defId] of RACING_KIT) engine.forceSet(slot, createPart(defId));
+      }, t('cheat.racingKit')),
+    });
+    cheats.add('Mécanique', {
+      kind: 'action',
+      id: 'stock-engine',
+      label: "Moteur d'origine",
+      run: () => this.cheatRebuild((engine) => {
+        engine.clear();
+        stockSm50(engine);
+      }, t('cheat.stock')),
+    });
+    cheats.add('Mécanique', {
+      kind: 'choice',
+      id: 'spawn-part',
+      label: 'Pièce neuve',
+      button: 'Faire apparaître',
+      options: () => PARTS.map((p) => ({ value: p.id, label: p.name })),
+      run: (defId) => this.spawnInFront(defId),
+    });
+    cheats.add('Mécanique', {
+      kind: 'action',
+      id: 'clear-parts',
+      label: 'Ranger les pièces au sol',
+      run: () => {
+        if (this.interaction.isHolding) return;
+        for (const loose of [...this.loose.values()]) this.disposeLoose(loose);
+      },
+    });
+    cheats.add('Moto', {
+      kind: 'toggle',
+      id: 'dev-engine',
+      label: 'Moteur DEV (×2,5, sans bridage)',
+      get: () => this.devEngine,
+      set: (on) => {
+        this.devEngine = on;
+        for (const rig of this.rigs) this.refreshStats(rig);
+      },
+    });
+  }
+
+  /** Change les pièces de la première moto sans passer par l'atelier (triches). */
+  private cheatRebuild(mutate: (engine: EngineAssembly) => void, message: string): void {
+    const rig = this.rigs[0];
+    if (!rig) return;
+    for (const mesh of rig.meshes.values()) {
+      this.ctx.interactables.unregisterMesh(mesh);
+      mesh.dispose();
+    }
+    rig.meshes.clear();
+    mutate(rig.engine);
+    for (const [slotId, part] of rig.engine.entries()) this.attachMesh(rig, slotId, part);
+    this.refreshStats(rig);
+    this.ctx.bus.emit('ui:notice', { message });
+  }
+
+  /** Pièce neuve devant le joueur, à hauteur de poitrine (elle tombe au sol). */
+  private spawnInFront(defId: string): void {
+    if (!PART_CATALOG.has(defId)) return;
+    const eye = this.player.getEyePosition(new Vector3());
+    const forward = this.player.getForward(new Vector3());
+    forward.y = 0;
+    if (forward.lengthSquared() < 1e-4) forward.set(0, 0, 1);
+    forward.normalize();
+    this.spawnLoose(createPart(defId, 1), eye.addInPlace(forward.scaleInPlace(1.1)).addInPlaceFromFloats(0, -0.4, 0));
   }
 
   /** Emplacements occupés de la première moto (pour les tests). */
@@ -295,7 +388,10 @@ export class MechanicsSystem implements GameSystem {
   }
 
   private refreshStats(rig: BikeRig): void {
-    rig.bike.powertrain.setEngineStats(rig.engine.stats());
+    const stats = rig.engine.stats();
+    rig.bike.powertrain.setEngineStats(
+      this.devEngine ? { ...stats, powerFactor: stats.powerFactor * 2.5, restrictions: [], limiterRpm: Math.max(stats.limiterRpm, 11800) } : stats,
+    );
   }
 }
 

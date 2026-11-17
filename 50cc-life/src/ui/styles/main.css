@@ -719,3 +719,121 @@ kbd {
   --p: 0;
   background: linear-gradient(to top, rgba(255, 176, 32, 0.75) calc(var(--p) * 100%), rgba(14, 16, 19, 0.55) 0);
 }
+
+/* ---------- Panneau de débogage : onglets Infos / DEV ---------- */
+.debug {
+  max-height: calc(100% - 16px - var(--safe-top) - var(--safe-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.debug__tabs {
+  display: flex;
+  gap: 4px;
+  margin: -2px 0 8px;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.debug__tab {
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-line);
+  background: transparent;
+  color: inherit;
+  font: 600 13px/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  cursor: pointer;
+}
+
+.debug__tab.is-active {
+  background: var(--ui-accent);
+  border-color: var(--ui-accent);
+  color: #111;
+}
+
+.debug__dev {
+  width: min(420px, calc(100vw - 100px));
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.debug__hint {
+  margin: 0 0 6px;
+  opacity: 0.7;
+  font-size: 12px;
+}
+
+.debug__group h3 {
+  margin: 10px 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ui-accent);
+}
+
+.debug__cheats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.debug__cheats .hud-btn {
+  min-height: 38px;
+  padding: 0 12px;
+  font: 500 13px/1.1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.debug__cheat-toggle {
+  flex-basis: 100%;
+}
+
+.debug__choice {
+  display: flex;
+  gap: 6px;
+  flex-basis: 100%;
+}
+
+.debug__choice select {
+  flex: 1;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-line);
+  background: #1c1f24;
+  color: inherit;
+}
+
+/* ---------- Argent ---------- */
+.money {
+  position: absolute;
+  top: calc(8px + var(--safe-top));
+  right: calc(64px + var(--safe-right));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: 8px 12px;
+  border-radius: var(--ui-radius);
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-line);
+  font: 700 17px/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.money__delta {
+  max-height: 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: #6fdc8c;
+  transition: max-height 0.2s ease;
+}
+
+.money__delta.is-loss {
+  color: #ff7a6b;
+}
+
+.money.is-changed .money__delta {
+  max-height: 20px;
+  margin-top: 4px;
+}

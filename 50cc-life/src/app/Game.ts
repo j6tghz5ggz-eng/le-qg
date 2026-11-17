@@ -29,7 +29,10 @@ import { t } from '../ui/i18n';
 import { showFatalError } from '../ui/screens/ErrorScreen';
 import { LoadingScreen } from '../ui/screens/LoadingScreen';
 import { showToast } from '../ui/screens/Toast';
-import { BIKE_SPAWN, PLAYER_SPAWN, SPARE_PART_SPOTS, TestWorld } from '../world/TestWorld';
+import { BIKE_SPAWN, PLAYER_SPAWN, SPARE_PART_SPOTS, TELEPORT_POINTS, TestWorld } from '../world/TestWorld';
+import { CheatRegistry } from '../debug/CheatRegistry';
+import { EconomySystem } from '../economy/EconomySystem';
+import { MoneyHud } from '../ui/hud/MoneyHud';
 import { MechanicsSystem } from '../mechanics/MechanicsSystem';
 import { SM50 } from '../vehicles/bike/specs';
 import { VehicleSystem } from '../vehicles/VehicleSystem';
@@ -91,10 +94,12 @@ export class Game {
         audio,
         interactables: new InteractableRegistry(),
         uiRoot: this.uiRoot,
+        cheats: new CheatRegistry(),
       };
 
       loading.setProgress(0.6, t('loading.world'));
       const world = new TestWorld();
+      const economy = new EconomySystem();
       const player = new PlayerController(PLAYER_SPAWN.position, PLAYER_SPAWN.yaw, PLAYER_SPAWN.pitch);
       const interaction = new InteractionSystem(player);
       const vehicles = new VehicleSystem(player, { addShadowCaster: (m) => world.environment.addShadowCaster(m) }, [
@@ -110,7 +115,10 @@ export class Game {
       // Ordre important : le monde, le joueur (caméra), les véhicules, la
       // mécanique (fantôme de remontage), puis l'interaction (rayon depuis
       // la caméra, désactivée en conduite).
+      // Le HUD de l'argent écoute avant que l'économie annonce le solde de départ.
+      new MoneyHud(this.uiRoot, this.bus);
       await this.addSystem(world, ctx);
+      await this.addSystem(economy, ctx);
       await this.addSystem(player, ctx);
       await this.addSystem(vehicles, ctx);
       await this.addSystem(mechanics, ctx);
@@ -121,21 +129,35 @@ export class Game {
       new PointerLockHint(this.uiRoot, input, this.bus);
       new VehicleHud(this.uiRoot, this.bus, input.scheme);
       const crateSpawn = new Vector3();
+      ctx.cheats.add('Monde', {
+        kind: 'action',
+        id: 'crate',
+        label: `📦 ${t('debug.spawnCrate')}`,
+        code: 'KeyB',
+        run: () => {
+          // 3 m devant le joueur, 3 m au-dessus des yeux
+          player.getForward(crateSpawn).scaleInPlace(3);
+          crateSpawn.y = 0;
+          crateSpawn.addInPlace(player.getEyePosition(new Vector3())).addInPlaceFromFloats(0, 3, 0);
+          world.spawnCrate(crateSpawn);
+        },
+      });
+      for (const point of TELEPORT_POINTS) {
+        ctx.cheats.add('Téléportation', {
+          kind: 'action',
+          id: `tp-${point.id}`,
+          label: point.label,
+          run: () => {
+            // En conduite, la moto est téléportée avec son pilote.
+            const bike = vehicles.current;
+            if (bike) vehicles.place(bike, point.position, point.yaw);
+            else player.teleport(point.position, point.yaw);
+            this.bus.emit('ui:notice', { message: `${t('cheat.teleported')} : ${point.label}` });
+          },
+        });
+      }
       new DebugOverlay(
         ctx,
-        [
-          {
-            label: `📦 ${t('debug.spawnCrate')}`,
-            code: 'KeyB',
-            run: () => {
-              // 3 m devant le joueur, 3 m au-dessus des yeux
-              player.getForward(crateSpawn).scaleInPlace(3);
-              crateSpawn.y = 0;
-              crateSpawn.addInPlace(player.getEyePosition(new Vector3())).addInPlaceFromFloats(0, 3, 0);
-              world.spawnCrate(crateSpawn);
-            },
-          },
-        ],
         () => {
           const p = player.footPosition;
           const state = player.isRiding ? 'en moto' : player.isGrounded ? 'au sol' : 'en l’air';
@@ -223,6 +245,9 @@ export class Game {
         get bikeParts() {
           return mechanics.installedSlots();
         },
+        get money() {
+          return economy.wallet.balance;
+        },
         slotPosition: (slot: string) => {
           const p = mechanics.slotWorldPosition(slot);
           return p ? { x: p.x, y: p.y, z: p.z } : null;
@@ -234,7 +259,7 @@ export class Game {
           return bike ? { x: bike.position.x, y: bike.position.y, z: bike.position.z, lean: bike.leanAngle } : null;
         },
         probeY: () => world.probeY(),
-      }, { scene, engine, player, vehicles, interaction, world, input, mechanics });
+      }, { scene, engine, player, vehicles, interaction, world, input, mechanics, economy, cheats: ctx.cheats });
 
       this.loop.start();
       this.setState('playing');

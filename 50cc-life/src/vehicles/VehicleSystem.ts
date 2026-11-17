@@ -88,6 +88,71 @@ export class VehicleSystem implements GameSystem {
     const audio = ctx.audio;
     if (audio.context && audio.master) this.engineSound = new EngineSound(audio.context, audio.master);
     for (const spawn of this.initialSpawns) this.spawn(spawn);
+    this.registerCheats();
+  }
+
+  /** Replace une moto (debout, immobile) ; le pilote éventuel suit. */
+  place(bike: Bike, position: Vector3, yaw: number): void {
+    bike.teleport(position, yaw);
+  }
+
+  /** Moto conduite, ou à défaut la première du monde. */
+  private get target(): Bike | null {
+    return this.riding ?? this.bikes[0] ?? null;
+  }
+
+  private registerCheats(): void {
+    const cheats = this.ctx.cheats;
+    cheats.add('Moto', {
+      kind: 'action',
+      id: 'bike-garage',
+      label: 'Ramener la moto au garage',
+      run: () => {
+        const bike = this.target;
+        const spawn = bike && this.spawns.get(bike);
+        if (bike && spawn) this.place(bike, spawn.position, spawn.yaw);
+      },
+    });
+    cheats.add('Moto', {
+      kind: 'action',
+      id: 'bike-here',
+      label: 'Moto devant moi',
+      run: () => {
+        const bike = this.bikes[0];
+        if (!bike || this.riding) return;
+        const forward = this.player.getForward(new Vector3());
+        forward.y = 0;
+        if (forward.lengthSquared() < 1e-4) forward.set(0, 0, 1);
+        forward.normalize();
+        const foot = this.player.footPosition;
+        // De travers devant le joueur, prête à enfourcher.
+        this.place(bike, new Vector3(foot.x + forward.x * 2.2, foot.y + 0.05, foot.z + forward.z * 2.2), this.player.heading + Math.PI / 2);
+      },
+    });
+    cheats.add('Moto', {
+      kind: 'action',
+      id: 'bike-start',
+      label: 'Démarrage instantané',
+      run: () => {
+        const bike = this.target;
+        if (!bike) return;
+        const result = bike.powertrain.start(1, () => 0);
+        if (!result.ok && result.reason === 'missing') this.notice(`${t('vehicle.cantStart')} ${result.missing.join(', ')}`);
+        else if (result.ok) this.notice(t('vehicle.engineOn'));
+      },
+    });
+    cheats.add('Moto', {
+      kind: 'action',
+      id: 'bike-neutral',
+      label: 'Point mort',
+      run: () => {
+        const pt = this.target?.powertrain;
+        if (pt instanceof ManualDrivetrain) {
+          pt.gear = 0;
+          pt.locked = false;
+        }
+      },
+    });
   }
 
   /** Aide « embrayage automatique » (mémorisée). */

@@ -94,6 +94,25 @@ export class EngineAssembly {
     this.installed.set(slotId, part);
   }
 
+  /**
+   * Pose ou retire une pièce SANS vérifier les règles de démontage : pour
+   * les triches (onglet DEV) et, plus tard, le chargement d'une sauvegarde.
+   */
+  forceSet(slotId: string, part: PartInstance | null): void {
+    const slot = this.slot(slotId);
+    if (!part) {
+      this.installed.delete(slotId);
+      return;
+    }
+    if (this.definition(part).category !== slot.accepts) throw new Error('Pièce incompatible');
+    this.installed.set(slotId, part);
+  }
+
+  /** Retire toutes les pièces (triches). */
+  clear(): void {
+    this.installed.clear();
+  }
+
   entries(): IterableIterator<[string, PartInstance]> {
     return this.installed.entries();
   }

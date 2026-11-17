@@ -79,6 +79,8 @@ export class PlayerController implements GameSystem {
   private riderPitch = 0;
   private savedCollideMask = 0;
   private portrait: boolean | null = null;
+  /** Multiplicateur de vitesse de marche (triche « marche rapide »). */
+  speedMultiplier = 1;
   private readonly prevFoot = new Vector3();
   private readonly currFoot = new Vector3();
   private readonly support: CharacterSurfaceInfo = {
@@ -148,6 +150,13 @@ export class PlayerController implements GameSystem {
     this.ctx = ctx;
     const scene = ctx.scene;
     this.physicsEngine = scene.getPhysicsEngine() as PhysicsEngine;
+    ctx.cheats.add('Joueur', {
+      kind: 'toggle',
+      id: 'fast-walk',
+      label: 'Marche rapide ×3',
+      get: () => this.speedMultiplier > 1,
+      set: (on) => (this.speedMultiplier = on ? 3 : 1),
+    });
 
     const center = this.spawn.add(new Vector3(0, PLAYER.standingHeight / 2, 0));
     const c = new PhysicsCharacterController(
@@ -197,7 +206,7 @@ export class PlayerController implements GameSystem {
     this.moveState = nextMoveState(this.moveState, supported, wantsJump, verticalSpeed);
 
     const move = input.getMove();
-    const speed = groundSpeed({ sprint: input.isHeld('sprint'), crouched: this.crouched });
+    const speed = groundSpeed({ sprint: input.isHeld('sprint'), crouched: this.crouched }) * this.speedMultiplier;
     const desired = moveDirection(move.x, move.y, this.yaw, this.tmp.desired);
     desired.scaleInPlace(speed);
     const forward = this.tmp.forward.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
@@ -293,6 +302,22 @@ export class PlayerController implements GameSystem {
     this.controller.setPosition(this.tmp.a.set(eye.x, eye.y - RIDER_EYE_HEIGHT + this.controller.footOffset, eye.z));
     this.prevFoot.copyFrom(this.currFoot);
     this.readFoot(this.currFoot);
+  }
+
+  /** Place le joueur à pied en `foot` (pieds), regard vers `yaw` (triches, scripts). */
+  teleport(foot: { x: number; y: number; z: number }, yaw = this.yaw): void {
+    if (this.seat) return;
+    this.controller.setPosition(new Vector3(foot.x, foot.y + this.controller.footOffset + 0.02, foot.z));
+    this.controller.setVelocity(Vector3.Zero());
+    this.yaw = yaw;
+    this.moveState = 'inAir';
+    this.readFoot(this.currFoot);
+    this.prevFoot.copyFrom(this.currFoot);
+  }
+
+  /** Cap du regard (rad, 0 = +z). */
+  get heading(): number {
+    return this.yaw;
   }
 
   /** Replace le joueur au point de départ (chute hors du monde…). */

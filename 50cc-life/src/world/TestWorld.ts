@@ -5,6 +5,8 @@
  * - un garage en « blocs gris » : murs, toit bas, seuil de 15 cm à franchir ;
  * - un établi avec une caisse à outils à prendre, juste devant le départ ;
  * - une rampe (pente), une pyramide de caisses à pousser ou à porter.
+ * Étapes 2 à 4 : un garage avec la moto et un établi, une route d'essai, et
+ * une colline (montée et descente à 6,25 %) pour vérifier les vitesses.
  */
 import { PointLight } from '@babylonjs/core/Lights/pointLight';
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
@@ -49,6 +51,19 @@ export const SPARE_PART_SPOTS = [
   // La cartouche (45 cm) s'étend vers -z depuis son entrée.
   new Vector3(-3.42, 1.16, 12.35),
 ] as const;
+
+/** Colline d'essai, axe z en x = 30 : montée de 80 m (+5 m), plateau de 20 m, descente de 80 m. */
+export const HILL = { x: 30, width: 8, zStart: 0, rampLength: 80, plateau: 20, height: 5 } as const;
+
+/** Lieux de téléportation (onglet DEV). `position` = pieds au sol. */
+export const TELEPORT_POINTS: ReadonlyArray<{ readonly id: string; readonly label: string; readonly position: Vector3; readonly yaw: number }> = [
+  { id: 'start', label: 'Départ', position: PLAYER_SPAWN.position, yaw: 0 },
+  { id: 'garage', label: 'Garage (moto)', position: new Vector3(-0.8, 0.15, 11.0), yaw: 0.9 },
+  { id: 'bench', label: 'Établi du garage', position: new Vector3(-2.4, 0.15, 12.0), yaw: -Math.PI / 2 },
+  { id: 'road', label: "Route d'essai", position: new Vector3(-14, 0, -12), yaw: 0 },
+  { id: 'hill-foot', label: 'Pied de la colline', position: new Vector3(HILL.x, 0, -12), yaw: 0 },
+  { id: 'hill-top', label: 'Sommet de la colline', position: new Vector3(HILL.x, HILL.height, HILL.zStart + HILL.rampLength + 4), yaw: 0 },
+];
 
 /** Route d'essai : axe x, de z = -20 à z = 180. */
 const ROAD = { x: -14, width: 7, zStart: -20, zEnd: 180 } as const;
@@ -95,6 +110,7 @@ export class TestWorld implements GameSystem {
     this.createGarage();
     this.createWorkbench();
     this.createRoad();
+    this.createHill();
 
     // Pyramide de caisses : 4 + 3 + 2 + 1
     for (let row = 0; row < 4; row++) {
@@ -257,6 +273,32 @@ export class TestWorld implements GameSystem {
       const body = new PhysicsAggregate(cone, PhysicsShapeType.CYLINDER, { mass: 1.5, friction: 0.7, restitution: 0.2 }, this.scene);
       this.register(body, { label: t('object.cone'), grabbable: true });
     }
+  }
+
+  /** Colline : deux pentes et un plateau (boîtes inclinées, 1 m d'épaisseur). */
+  private createHill(): void {
+    const { x, width, zStart, rampLength, plateau, height } = HILL;
+    const slope = Math.atan2(height, rampLength);
+    const length = Math.hypot(rampLength, height);
+    const thick = 1;
+    const material = this.materials.darkConcrete;
+    const down = zStart + rampLength + plateau;
+    // Centre de la boîte = milieu de la face du dessus, reculé d'une demi-épaisseur le long de la normale.
+    this.staticBox({
+      name: 'hill-up',
+      size: [width, thick, length],
+      position: [x, height / 2 - (thick / 2) * Math.cos(slope), zStart + rampLength / 2 + (thick / 2) * Math.sin(slope)],
+      material,
+      tiltX: -slope,
+    });
+    this.staticBox({ name: 'hill-top', size: [width, thick, plateau], position: [x, height - thick / 2, zStart + rampLength + plateau / 2], material });
+    this.staticBox({
+      name: 'hill-down',
+      size: [width, thick, length],
+      position: [x, height / 2 - (thick / 2) * Math.cos(slope), down + rampLength / 2 - (thick / 2) * Math.sin(slope)],
+      material,
+      tiltX: slope,
+    });
   }
 
   private staticBox(spec: BoxSpec): Mesh {

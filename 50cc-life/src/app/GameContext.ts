@@ -13,6 +13,7 @@ import type { InputManager } from '../core/input/InputManager';
 import type { InteractableRegistry } from '../core/interaction/Interactable';
 import type { PlatformInfo } from '../core/platform/platform';
 import type { QualityManager } from '../core/quality/QualityManager';
+import type { CheatRegistry } from '../debug/CheatRegistry';
 import type { GameEvents } from './events';
 
 export interface GameContext {
@@ -28,6 +29,11 @@ export interface GameContext {
   readonly interactables: InteractableRegistry;
   /** Conteneur HTML de l'interface (par-dessus le canvas). */
   readonly uiRoot: HTMLElement;
+  /**
+   * Triches de l'onglet DEV. Chaque système y ajoute les siennes dans
+   * init() ; toute nouvelle fonctionnalité utile pour tester en ajoute une.
+   */
+  readonly cheats: CheatRegistry;
 }
 
 /**
