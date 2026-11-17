@@ -20,6 +20,28 @@ export interface PowertrainOutput {
   readonly inertiaMass: number;
 }
 
+/**
+ * Bridage par une pièce (pot, cartouche, carburateur…) : au-delà de
+ * `startRpm`, le couple est progressivement étranglé jusqu'à `floor`
+ * (fraction conservée) à `endRpm`.
+ */
+export interface Restriction {
+  readonly startRpm: number;
+  readonly endRpm: number;
+  readonly floor: number;
+}
+
+/** Fraction de couple conservée à ce régime par un ensemble de bridages. */
+export function restrictionFactor(restrictions: readonly Restriction[], rpm: number): number {
+  let factor = 1;
+  for (const r of restrictions) {
+    if (rpm <= r.startRpm) continue;
+    const t = Math.min((rpm - r.startRpm) / (r.endRpm - r.startRpm), 1);
+    factor *= 1 - t * (1 - r.floor);
+  }
+  return factor;
+}
+
 /** Ce que les pièces installées permettent au moteur (voir mechanics/). */
 export interface EngineStats {
   /** Toutes les pièces indispensables sont là. */
@@ -30,6 +52,8 @@ export interface EngineStats {
   readonly powerFactor: number;
   /** Régime de coupure de l'allumage (CDI bridé ou non). */
   readonly limiterRpm: number;
+  /** Bridages qui étranglent le moteur à haut régime (pot, carbu…). */
+  readonly restrictions: readonly Restriction[];
   /** Probabilité qu'un coup de kick démarre le moteur. */
   readonly startChance: number;
   /** Bruit de l'échappement (0 à 1), pour le son. */

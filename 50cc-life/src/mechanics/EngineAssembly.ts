@@ -2,7 +2,7 @@
  * Pièces montées sur un moteur, règles de démontage/remontage et effet sur
  * les performances. Module pur (testé dans Node).
  */
-import type { EngineStats } from '../vehicles/simulation/Powertrain';
+import type { EngineStats, Restriction } from '../vehicles/simulation/Powertrain';
 import type { PartCatalog, PartDefinition } from './parts';
 import type { SlotDefinition } from './slots';
 
@@ -19,10 +19,17 @@ export function createPart(defId: string, condition = 1): PartInstance {
   return { uid: `part-${nextUid++}`, defId, condition };
 }
 
-/** Effets de l'absence d'une pièce non indispensable. */
-const MISSING_EXHAUST_POWER = 0.75;
+/**
+ * Effets de l'absence d'une pièce non indispensable :
+ * - sans pot de détente, un 2 temps perd beaucoup (plus d'onde de retour) ;
+ * - sans cartouche, il perd un peu et hurle ;
+ * - sans filtre, il respire un peu mieux (et s'use plus vite, plus tard).
+ */
+const MISSING_CHAMBER_POWER = 0.6;
+const MISSING_SILENCER_POWER = 0.97;
+const MISSING_SILENCER_LOUDNESS = 0.8;
 const MISSING_FILTER_POWER = 1.03;
-const DEFAULT_LIMITER = 6500;
+const DEFAULT_LIMITER = 8700;
 
 export class EngineAssembly {
   private readonly installed = new Map<string, PartInstance>();
@@ -95,13 +102,30 @@ export class EngineAssembly {
   stats(): EngineStats {
     const missing = this.slots.filter((s) => s.required && !this.installed.has(s.id)).map((s) => s.name);
     let powerFactor = 1;
-    for (const part of this.installed.values()) powerFactor *= this.definition(part).effects.powerFactor ?? 1;
+    const restrictions: Restriction[] = [];
+    // Parcours dans l'ordre des emplacements : résultat stable, quel que soit
+    // l'ordre des démontages/remontages.
+    for (const slot of this.slots) {
+      const part = this.installed.get(slot.id);
+      if (!part) continue;
+      const effects = this.definition(part).effects;
+      powerFactor *= effects.powerFactor ?? 1;
+      if (effects.restriction) restrictions.push(effects.restriction);
+    }
 
     const piston = this.installed.get('piston');
     if (piston) powerFactor *= 0.75 + 0.25 * piston.condition; // usure : perte de compression
-    const exhaust = this.installed.get('exhaust');
-    if (!exhaust) powerFactor *= MISSING_EXHAUST_POWER;
+    const chamber = this.installed.get('exhaust');
+    const silencer = this.installed.get('silencer');
+    if (!chamber) powerFactor *= MISSING_CHAMBER_POWER;
+    else if (!silencer) powerFactor *= MISSING_SILENCER_POWER;
     if (!this.installed.has('airFilter')) powerFactor *= MISSING_FILTER_POWER;
+
+    let loudness = 1;
+    if (chamber) {
+      loudness = this.definition(chamber).effects.loudness ?? 0;
+      loudness += silencer ? (this.definition(silencer).effects.loudness ?? 0.3) : MISSING_SILENCER_LOUDNESS;
+    }
 
     const ignition = this.installed.get('ignition');
     const plug = this.installed.get('sparkPlug');
@@ -113,8 +137,9 @@ export class EngineAssembly {
       missing,
       powerFactor,
       limiterRpm: ignition ? (this.definition(ignition).effects.limiterRpm ?? DEFAULT_LIMITER) : DEFAULT_LIMITER,
+      restrictions,
       startChance: Math.min(Math.max(startChance, 0.05), 0.98),
-      loudness: exhaust ? (this.definition(exhaust).effects.loudness ?? 0.4) : 1,
+      loudness: Math.min(loudness, 1),
     };
   }
 }
@@ -127,6 +152,7 @@ export function stockSm50(assembly: EngineAssembly): EngineAssembly {
     ['head', 'head-50', 0.9],
     ['sparkPlug', 'plug-std', 0.3],
     ['exhaust', 'exhaust-stock', 0.9],
+    ['silencer', 'silencer-stock', 0.9],
     ['carburetor', 'carb-12', 0.85],
     ['airFilter', 'airfilter-std', 0.6],
     ['ignition', 'cdi-restricted', 1],

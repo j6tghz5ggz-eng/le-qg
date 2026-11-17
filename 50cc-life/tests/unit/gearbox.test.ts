@@ -1,15 +1,37 @@
 import { describe, expect, it } from 'vitest';
+import { EngineAssembly, createPart, stockSm50 } from '../../src/mechanics/EngineAssembly';
+import { PART_CATALOG } from '../../src/mechanics/parts';
+import { SM50_SLOTS } from '../../src/mechanics/slots';
 import { AutoClutch } from '../../src/vehicles/simulation/AutoClutch';
 import { ManualDrivetrain, SM50_DRIVETRAIN, clutchEngagement } from '../../src/vehicles/simulation/ManualDrivetrain';
-import type { EngineStats } from '../../src/vehicles/simulation/Powertrain';
+import { restrictionFactor, type EngineStats } from '../../src/vehicles/simulation/Powertrain';
 
 const DT = 1 / 60;
 const MASS = 98 + 75; // supermotard + pilote
 const CDA = 0.55;
 const ROLLING = 0.015;
 
-const RESTRICTED: EngineStats = { canRun: true, missing: [], powerFactor: 1, limiterRpm: 6500, startChance: 1, loudness: 0.4 };
-const FREE: EngineStats = { ...RESTRICTED, limiterRpm: 11500 };
+const G = 9.81;
+
+/** Moteur d'origine tel qu'il sort de l'usine (bridé), avec les vraies pièces. */
+function stockEngine(): EngineAssembly {
+  return stockSm50(new EngineAssembly(SM50_SLOTS, PART_CATALOG));
+}
+
+/** Kit de débridage : CDI, pot et cartouche « course ». */
+function freeEngine(): EngineAssembly {
+  const engine = stockEngine();
+  engine.remove('silencer');
+  engine.remove('exhaust');
+  engine.remove('ignition');
+  engine.install('ignition', createPart('cdi-free'));
+  engine.install('exhaust', createPart('exhaust-racing'));
+  engine.install('silencer', createPart('silencer-racing'));
+  return engine;
+}
+
+const RESTRICTED: EngineStats = { ...stockEngine().stats(), startChance: 1 };
+const FREE: EngineStats = { ...freeEngine().stats(), startChance: 1 };
 
 function running(stats = RESTRICTED): ManualDrivetrain {
   const d = new ManualDrivetrain(SM50_DRIVETRAIN);
@@ -18,19 +40,29 @@ function running(stats = RESTRICTED): ManualDrivetrain {
   return d;
 }
 
-/** Avance d'un pas en ligne droite (modèle 1D). */
-function step(d: ManualDrivetrain, v: number, throttle: number, clutch: number): number {
+/**
+ * Avance d'un pas en ligne droite (modèle 1D). `slope` : pente en fraction
+ * (0,06 = 6 %), positive en montée, négative en descente.
+ */
+function step(d: ManualDrivetrain, v: number, throttle: number, clutch: number, slope = 0): number {
   const out = d.update(DT, { throttle, clutch }, v);
   const drive = (out.force * MASS) / (MASS + out.inertiaMass);
-  const resist = -0.5 * 1.2 * CDA * v * Math.abs(v) - (v > 0.05 ? ROLLING * MASS * 9.81 : 0);
+  const angle = Math.atan(slope);
+  const resist =
+    -0.5 * 1.2 * CDA * v * Math.abs(v) - (v > 0.05 ? ROLLING * MASS * G * Math.cos(angle) : 0) - MASS * G * Math.sin(angle);
   return Math.max(0, v + ((drive + resist) / MASS) * DT);
 }
 
-/** Pilote virtuel : démarre en 1re et passe les vitesses au rupteur. */
-function fullThrottleRun(d: ManualDrivetrain, seconds: number) {
+/**
+ * Pilote virtuel : démarre en 1re, passe les vitesses vers `shiftRpm` (ou
+ * juste sous le rupteur s'il est plus bas), plein gaz tout du long.
+ */
+function fullThrottleRun(d: ManualDrivetrain, seconds: number, slope = 0, shiftRpm = 9800) {
   let v = 0;
   let lever = 1;
   let shiftTimer = 0;
+  // Départ arrêté : embrayage relâché en 1,5 s ; ensuite 0,5 s à chaque vitesse.
+  let release = 1.5;
   d.shiftUp(1); // N → 1re
   const speeds: number[] = [];
   let stalled = false;
@@ -38,13 +70,16 @@ function fullThrottleRun(d: ManualDrivetrain, seconds: number) {
     if (shiftTimer > 0) {
       shiftTimer -= DT;
       lever = 1;
-      if (shiftTimer <= 0) d.shiftUp(1);
+      if (shiftTimer <= 0) {
+        d.shiftUp(1);
+        release = 0.5;
+      }
     } else {
-      lever = Math.max(0, lever - DT / 0.8); // relâche l'embrayage en 0,8 s
+      lever = Math.max(0, lever - DT / release);
       // Passe la vitesse au rupteur, ou vers le pic de puissance s'il est plus bas.
-      if (d.gear < 6 && d.locked && d.rpm > Math.min(d.limiterRpm - 250, 9800)) shiftTimer = 0.15;
+      if (d.gear < 6 && d.locked && d.rpm > Math.min(d.limiterRpm - 250, shiftRpm)) shiftTimer = 0.15;
     }
-    v = step(d, v, 1, lever);
+    v = step(d, v, 1, lever, slope);
     if (d.consumeStall()) stalled = true;
     speeds.push(v);
   }
@@ -100,7 +135,7 @@ describe('boîte 6 vitesses : embrayage, démarrage, calage', () => {
     const d = running();
     d.shiftUp(1);
     let v = 0;
-    for (let i = 0; i < 120; i++) v = step(d, v, 1, Math.max(0, 1 - (i * DT) / 0.8));
+    for (let i = 0; i < 180; i++) v = step(d, v, 1, Math.max(0, 1 - (i * DT) / 1.2));
     expect(d.running).toBe(true);
     expect(v).toBeGreaterThan(3);
   });
@@ -120,23 +155,53 @@ describe('boîte 6 vitesses : embrayage, démarrage, calage', () => {
 });
 
 describe('performances (ligne droite simulée)', () => {
-  it('bridé (CDI 6 500 tr/min) : 45 km/h en 6e, sans caler', () => {
-    const run = fullThrottleRun(running(RESTRICTED), 40);
-    expect(run.stalled).toBe(false);
-    expect(run.top).toBeGreaterThan(42);
-    expect(run.top).toBeLessThan(46.5);
+  it('les pièces d’origine étranglent le moteur à haut régime', () => {
+    expect(restrictionFactor(RESTRICTED.restrictions, 4000)).toBe(1);
+    expect(restrictionFactor(RESTRICTED.restrictions, 7500)).toBeLessThan(0.6);
+    expect(restrictionFactor(RESTRICTED.restrictions, 8500)).toBeLessThan(0.42);
+    expect(restrictionFactor(FREE.restrictions, 8500)).toBe(1);
+    expect(RESTRICTED.limiterRpm).toBe(8700);
   });
 
-  it('débridé (CDI 11 500 tr/min) : entre 70 et 85 km/h', () => {
+  it('d’origine (bridée), à plat : plafonne vers 50 km/h, sans caler', () => {
+    const run = fullThrottleRun(running(RESTRICTED), 50, 0, 7000);
+    expect(run.stalled).toBe(false);
+    expect(run.top).toBeGreaterThan(48);
+    expect(run.top).toBeLessThan(52);
+  });
+
+  it('d’origine, en descente à 6 % : 55 à 60 km/h (le CDI coupe vers 60)', () => {
+    const run = fullThrottleRun(running(RESTRICTED), 60, -0.06, 7000);
+    expect(run.top).toBeGreaterThan(55);
+    expect(run.top).toBeLessThan(61.5);
+  });
+
+  it('d’origine, en montée à 6 % : nettement plus lente qu’à plat', () => {
+    const flat = fullThrottleRun(running(RESTRICTED), 50, 0, 7000).top;
+    const climb = fullThrottleRun(running(RESTRICTED), 50, 0.06, 7000).top;
+    expect(climb).toBeLessThan(flat - 8);
+    expect(climb).toBeGreaterThan(28);
+  });
+
+  it('débridée (CDI, pot et cartouche course) : environ 70 km/h', () => {
     const run = fullThrottleRun(running(FREE), 60);
     expect(run.stalled).toBe(false);
-    expect(run.top).toBeGreaterThan(70);
-    expect(run.top).toBeLessThan(85);
+    expect(run.top).toBeGreaterThan(68);
+    expect(run.top).toBeLessThan(80);
   });
 
-  it('le pot « course » (+15 %) fait gagner en accélération', () => {
+  it('avec en plus le carburateur 17,5 : encore plus vite', () => {
+    const engine = freeEngine();
+    engine.remove('carburetor');
+    engine.install('carburetor', createPart('carb-17'));
+    const kit = fullThrottleRun(running({ ...engine.stats(), startChance: 1 }), 60).top;
+    expect(kit).toBeGreaterThan(fullThrottleRun(running(FREE), 60).top + 3);
+    expect(kit).toBeLessThan(90);
+  });
+
+  it('un pot plus puissant fait gagner en accélération', () => {
     const stock = fullThrottleRun(running(FREE), 8).speeds.at(-1)!;
-    const racing = fullThrottleRun(running({ ...FREE, powerFactor: 1.15 }), 8).speeds.at(-1)!;
+    const racing = fullThrottleRun(running({ ...FREE, powerFactor: FREE.powerFactor * 1.15 }), 8).speeds.at(-1)!;
     expect(racing).toBeGreaterThan(stock);
   });
 

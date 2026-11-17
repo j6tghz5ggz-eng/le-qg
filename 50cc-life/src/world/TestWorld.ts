@@ -44,8 +44,10 @@ export const GARAGE = { x: 0, z: 12, doorWidth: 3.4, height: 2.9 } as const;
 export const SPARE_PART_SPOTS = [
   new Vector3(-3.42, 1.2, 10.95),
   new Vector3(-3.42, 1.2, 11.5),
-  // Le pot (1 m de long) s'étend vers -z depuis son point d'ancrage.
-  new Vector3(-3.42, 1.45, 13.3),
+  // Le pot (80 cm) s'étend vers -z et vers +x depuis sa bride.
+  new Vector3(-3.62, 1.22, 13.2),
+  // La cartouche (45 cm) s'étend vers -z depuis son entrée.
+  new Vector3(-3.42, 1.16, 12.35),
 ] as const;
 
 /** Route d'essai : axe x, de z = -20 à z = 180. */

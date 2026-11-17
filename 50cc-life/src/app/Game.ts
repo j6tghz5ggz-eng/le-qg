@@ -105,6 +105,7 @@ export class Game {
         { defId: 'cdi-free', condition: 1, position: SPARE_PART_SPOTS[0] },
         { defId: 'plug-std', condition: 1, position: SPARE_PART_SPOTS[1] },
         { defId: 'exhaust-racing', condition: 1, position: SPARE_PART_SPOTS[2] },
+        { defId: 'silencer-racing', condition: 1, position: SPARE_PART_SPOTS[3] },
       ]);
       // Ordre important : le monde, le joueur (caméra), les véhicules, la
       // mécanique (fantôme de remontage), puis l'interaction (rayon depuis

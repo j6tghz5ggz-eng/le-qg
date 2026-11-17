@@ -16,7 +16,7 @@ test.describe('atelier au clavier', () => {
     await waitFor(page, (s) => !s.bikeParts.includes('sparkPlug'), 5000);
     await page.keyboard.up('KeyE');
     const loose = await page.evaluate(() => window.__50CC__!.looseParts().length);
-    expect(loose).toBe(4); // 3 pièces de rechange + la bougie démontée
+    expect(loose).toBe(5); // 4 pièces de rechange + la bougie démontée
 
     // La culasse ne se démonte qu'une fois la bougie retirée : c'est fait.
     // On regarde le sol à côté de la moto pour la viser « de proximité » et monter.

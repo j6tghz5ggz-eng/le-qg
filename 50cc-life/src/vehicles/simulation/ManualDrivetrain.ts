@@ -15,17 +15,22 @@
  *   bas dans les tours = le moteur cale (comme en vrai en lâchant
  *   l'embrayage d'un coup au ralenti).
  *
- * Le bridage d'usine passe par le boîtier CDI qui coupe l'allumage à
- * 6 500 tr/min : 45 km/h en 6e. Un CDI débridé (pièce) coupe bien plus haut.
+ * Bridage d'usine, comme en vrai, à plusieurs étages :
+ * - le pot de détente, la cartouche et le petit carburateur étranglent le
+ *   moteur à haut régime : à plat, la moto plafonne vers 50 km/h ;
+ * - le boîtier CDI coupe l'allumage à 8 700 tr/min (≈ 60 km/h en 6e) : en
+ *   descente, la pente l'aide à monter jusque-là, pas plus.
+ * Débrider = changer ces pièces (CDI, pot, cartouche…).
  */
 import { sampleCurve } from './Drivetrain';
-import type {
-  EngineStats,
-  Powertrain,
-  PowertrainInput,
-  PowertrainOutput,
-  ShiftResult,
-  StartResult,
+import {
+  restrictionFactor,
+  type EngineStats,
+  type Powertrain,
+  type PowertrainInput,
+  type PowertrainOutput,
+  type ShiftResult,
+  type StartResult,
 } from './Powertrain';
 
 export interface ManualDrivetrainSpec {
@@ -94,7 +99,8 @@ const DEFAULT_STATS: EngineStats = {
   canRun: true,
   missing: [],
   powerFactor: 1,
-  limiterRpm: 6500,
+  limiterRpm: 8700,
+  restrictions: [],
   startChance: 0.85,
   loudness: 0.4,
 };
@@ -177,7 +183,11 @@ export class ManualDrivetrain implements Powertrain {
     let combustion = 0;
     if (this.running && this.rpm < this.stats.limiterRpm) {
       const gas = Math.max(Math.min(Math.max(input.throttle, 0), 1), this.idleThrottle());
-      combustion = sampleCurve(s.torqueCurve, this.rpm) * this.stats.powerFactor * gas;
+      combustion =
+        sampleCurve(s.torqueCurve, this.rpm) *
+        this.stats.powerFactor *
+        restrictionFactor(this.stats.restrictions, this.rpm) *
+        gas;
     }
     const friction = omega > 0 ? s.friction[0] + s.friction[1] * this.rpm : 0;
     const engineTorque = combustion - friction;
