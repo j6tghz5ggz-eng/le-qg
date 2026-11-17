@@ -43,6 +43,13 @@ interface Held extends Target {
 /** Une pièce visée par son modèle peut être un peu derrière la surface physique. */
 const MESH_PRIORITY_MARGIN = 0.25;
 /**
+ * Une pièce « dans » la moto ne gagne la visée que si elle est à moins de
+ * cette distance derrière le point où le regard touche la moto : une pièce
+ * de l'autre côté (le pot, vu depuis le flanc gauche…) ne vole pas la visée
+ * quand on veut monter.
+ */
+const OWNER_DEPTH = 0.4;
+/**
  * Aide à la visée : une petite pièce (bougie : 2,4 cm) compte comme visée
  * si le rayon passe à moins de cette distance de son volume (m).
  */
@@ -203,7 +210,7 @@ export class InteractionSystem implements GameSystem {
     }
     // La pièce gagne si elle est devant, ou si le rayon physique a touché
     // le corps qui la porte (la pièce est « dans » la forme de la moto).
-    const hitOwner = meshOwner !== null && this.ray.hasHit && this.ray.body === meshOwner;
+    const hitOwner = meshOwner !== null && this.ray.hasHit && this.ray.body === meshOwner && meshDistance <= physicsDistance + OWNER_DEPTH;
     if (meshItem && (hitOwner || meshDistance <= physicsDistance + MESH_PRIORITY_MARGIN)) {
       if (this.focus?.item !== meshItem) this.focus = { body: null, item: meshItem, mass: 0 };
       return;

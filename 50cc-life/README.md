@@ -6,11 +6,18 @@ première personne. Inspirations : My Summer Car, Mon Bazou.
 **Babylon.js · Havok · TypeScript · Vite** : 100 % gratuit, fonctionne dans le
 navigateur sur PC, Android et iOS.
 
-> État : **étape 3** (garage, mécanique, boîte de vitesses). Un supermotard
-> 50 à boîte 6 vitesses (embrayage, calage, kick, bridé à 45 km/h) garé dans
-> un garage aménagé ; les pièces du moteur se démontent et se remontent
-> (bougie, culasse, cylindre, piston, pot, carburateur, filtre, CDI) et
-> changent les performances. Son moteur 2 temps synthétisé.
+> État : **étape 4** (réalisme et outils de test).
+>
+> - Le supermotard détaillé (VARONE SMX 50, marque fictive) a une boîte 6
+>   vitesses, un embrayage, il peut caler et démarre au kick.
+> - Il est bridé comme en vrai : environ 50 km/h à plat, 55 à 60 km/h en
+>   descente.
+> - Les pièces du moteur se démontent et se remontent : bougie, culasse,
+>   cylindre, piston, pot passage haut, cartouche, carburateur, filtre, CDI.
+>   Elles changent les performances (kit TURBINO pour débrider).
+> - Son moteur 2 temps synthétisé.
+> - Onglet DEV de triches (argent, téléportation, pièces…), porte-monnaie et
+>   colline d'essai.
 
 ## Démarrer
 
@@ -74,6 +81,16 @@ Ouvrez cette adresse sur le téléphone.
 Point mort sous la 1re (N - 1 - 2 - … - 6). Pour démarrer : point mort ou
 embrayage tiré. **Embrayage automatique** : activé par défaut sur écran
 tactile, réglable dans le panneau 📊.
+
+### Panneau 📊 (F3) : onglets Infos et DEV
+
+- **Infos** : statistiques, qualité graphique, réglages.
+- **DEV** : triches pour tester. On y trouve l'argent, la téléportation
+  (garage, route, colline…), la moto (ramener, démarrage instantané, moteur
+  DEV), la mécanique (pièce neuve du catalogue, kit débridage, moteur
+  d'origine, tout à neuf) et la marche rapide. Le raccourci **B** lâche une
+  caisse.
+- Chaque nouvelle fonctionnalité y ajoute ses triches.
 
 ## Documentation
 

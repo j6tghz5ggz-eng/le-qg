@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { holdKeys, hooks, joystick, joystickIntoGarage, startGame, waitFor, walkIntoGarage } from './helpers';
+import { holdKeys, hooks, joystick, joystickIntoGarage, startGame, waitFor, waitStill, walkIntoGarage } from './helpers';
 
 test.describe('supermotard au clavier (boîte manuelle)', () => {
   test.skip(({ isMobile }) => isMobile, 'test clavier');
@@ -73,7 +73,12 @@ test.describe('supermotard au tactile (embrayage automatique)', () => {
   test('joystick jusqu’au garage, Monter, Démarrer, +, gaz au joystick, Descendre', async ({ page }) => {
     await startGame(page);
     await joystickIntoGarage(page);
+    // Viser l'avant de la moto : sur le flanc, on viserait le pot ou la cartouche (démontables).
+    await page.evaluate(() => window.__50CC__!.lookAt(0.95, 0.45, 11.7));
     await joystick(page, 0, -55, (s) => s.focus === 'Supermotard 50');
+    await waitStill(page);
+    await page.evaluate(() => window.__50CC__!.lookAt(0.95, 0.35, 11.6));
+    await waitFor(page, (s) => s.focus === 'Supermotard 50');
     await page.getByRole('button', { name: 'Monter' }).tap();
     await waitFor(page, (s) => s.vehicle !== null);
     await expect(page.getByRole('button', { name: 'Embrayage' })).toBeHidden(); // embrayage auto sur tactile

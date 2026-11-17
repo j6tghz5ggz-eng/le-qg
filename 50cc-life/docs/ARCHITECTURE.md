@@ -63,10 +63,11 @@ presque chaque semaine : on met à jour volontairement, tous les paquets
 ├── index.html                 entrée du jeu (canvas + couche UI)
 ├── package.json · tsconfig*.json · vite.config.ts · playwright.config.ts
 ├── public/                    fichiers servis tels quels (icône, puis assets optimisés)
-├── assets-src/                sources lourdes : HORS GIT (voir § 10)
+├── assets-src/                sources lourdes : HORS GIT (voir § 11)
 ├── tools/check-sizes.mjs      budgets de taille
 ├── .githooks/pre-commit       refuse les fichiers de plus de 10 Mo
 ├── docs/ARCHITECTURE.md       ce document
+├── CLAUDE.md                  consignes de travail (dont la règle de l'onglet DEV)
 ├── tests/
 │   ├── unit/                  Vitest (modules purs)
 │   └── e2e/                   Playwright (le jeu démarre sur PC + mobile émulé)
@@ -82,22 +83,23 @@ presque chaque semaine : on met à jour volontairement, tous les paquets
     │   ├── physics/           initialisation Havok, couches de collision
     │   ├── platform/          détection de l'appareil et du GPU
     │   ├── quality/           profils, résolution dynamique
-    │   ├── rendering/         post-traitements
+    │   ├── rendering/         post-traitements, meshKit (formes détaillées construites en code)
     │   ├── audio/             contexte Web Audio (déverrouillé au premier geste)
     │   └── save/              préférences (puis sauvegardes IndexedDB)
     ├── player/                joueur à la 1re personne, interaction (prendre, lancer, démonter)
-    ├── mechanics/             pièces, emplacements, règles de démontage, atelier 3D
+    ├── mechanics/             pièces, emplacements, règles de démontage, atelier 3D, tracé de l'échappement
+    ├── economy/               porte-monnaie (Wallet, pur et testé), système d'économie
     ├── vehicles/
-    │   ├── bike/              physique de la moto, modèles 3D provisoires, fiches techniques
+    │   ├── bike/              physique de la moto, modèles 3D (supermotard détaillé, déco), fiches techniques
     │   ├── simulation/        boîte manuelle, embrayage auto, variateur (TS pur, testé)
     │   └── audio/             son moteur 2 temps synthétisé
-    ├── world/                 environnement (ciel, lumière, ombres), scène de test
-    ├── debug/                 statistiques, API pour les tests
+    ├── world/                 environnement (ciel, reflets, lumière, ombres), scène de test
+    ├── debug/                 panneau (Infos / DEV), registre des triches, API pour les tests
     └── ui/                    écrans et HUD HTML/CSS, commandes tactiles, textes (i18n)
 ```
 
 Dossiers prévus aux étapes suivantes : `core/assets/`, `world/streaming/`,
-`economy/`, `inventory/`, `data/` (catalogues en données).
+`inventory/`, `data/` (catalogues en données).
 
 ## 5. Boucle de jeu : pas fixe à 60 Hz
 
@@ -313,7 +315,7 @@ mobylettes.
 ### Le garage
 
 - Porte de 3,4 m et dalle surélevée de 15 cm.
-- Établi avec les pièces de rechange : bougie neuve, CDI débridé, pot course.
+- Établi avec les pièces de rechange : bougie neuve, CDI débridé, pot TURBINO RX et cartouche TURBINO Carbon.
 - Étagère, et plafonnier commandé par un interrupteur. On l'éteint en
   mettant son intensité à 0, sans désactiver la lampe, pour éviter de
   recompiler les shaders.
@@ -329,7 +331,106 @@ sans fichier à télécharger :
 Le volume dépend du pot. Le son démarre au premier geste du joueur (règle des
 navigateurs), et le panneau 📊 permet de le couper.
 
-## 10. Stockage gratuit : ce qui va où
+## 10. Réalisme, échappement et onglet DEV (étape 4)
+
+### Bridage d'usine réaliste
+
+D'origine, la moto plafonne vers **50 km/h à plat** et monte à **55-60 km/h
+en descente**, comme un vrai 50 bridé. Deux mécanismes, comme en vrai :
+
+- **Étranglement à haut régime** (`Restriction` dans `Powertrain.ts`) : chaque
+  pièce bridée réduit progressivement le couple entre deux régimes.
+
+  | Pièce d'origine | Bridage |
+  |---|---|
+  | Pot passage haut VARONE (restricteur dans le coude) | 6 000 → 8 000 tr/min, garde 40 % |
+  | Cartouche d'origine | 7 000 → 9 000 tr/min, garde 90 % |
+  | Carburateur 12 mm | 9 000 → 12 000 tr/min, garde 80 % |
+
+- **CDI bridé** : coupe l'allumage à 8 700 tr/min, soit 60 km/h en 6e. En
+  descente, la pente aide le moteur à y monter, pas plus.
+
+Résultats de la simulation (tests unitaires, 98 kg + 75 kg de pilote) :
+49,7 km/h à plat, 56,6 km/h en descente à 4 %, 60,2 km/h à 6 %, environ
+35 km/h en montée à 6 %. Débridée (CDI, pot et cartouche TURBINO) : environ
+71 km/h, et un peu plus avec le carburateur 17,5 mm.
+
+### Échappement en deux pièces
+
+- Le **pot de détente** (passage haut) et la **cartouche** sont deux pièces :
+  la cartouche se monte sur le pot, donc on la retire avant lui.
+- Sans cartouche, le moteur perd un peu de puissance et hurle ; sans pot, il
+  perd 40 % et fait le maximum de bruit.
+- Le tracé du pot (`exhaustGeometry.ts`) est partagé par l'emplacement de la
+  cartouche et le modèle 3D, pour que la cartouche tombe pile sur la queue
+  du pot.
+- Modèles : tube profilé (collecteur, cône divergent, ventre, cône
+  convergent, queue), cordons de soudure, bride, pattes, colliers, carbone.
+
+### Marques fictives
+
+**VARONE** est le constructeur (la moto s'appelle VARONE SMX 50) et
+**TURBINO** fabrique les échappements « course ». Les autocollants sont
+dessinés en code dans des textures (aucune image, aucun logo réel). La
+plaque d'immatriculation (GV-050 SM) est inventée.
+
+### Modèle 3D détaillé, construit en code
+
+`supermotardVisual.ts` assemble une moto crédible avec la boîte à outils
+`core/rendering/meshKit.ts` :
+- tubes courbes (cadre, cintre, durites) ;
+- pièces tournées (pneus profilés, jantes, moyeux, disques, couronne) ;
+- profilés balayés (selle, réservoir, garde-boue arrière) ;
+- plaques découpées avec leur déco (écopes, caches) ;
+- ressort hélicoïdal.
+
+La fourche s'enfonce **le long de ses tubes** et le bras oscillant **pivote**
+avec la suspension.
+
+**Coût maîtrisé pour le mobile** : les surfaces de même nature (métal,
+chrome, plastique brillant, plastique mat, feux) partagent un matériau, et
+la couleur est portée par les sommets. On obtient environ 30 appels GPU pour
+toute la moto au lieu d'une cinquantaine.
+
+### Lumière
+
+- **Ciel de reflets** généré en code (`skyReflection.ts`) : un cube de
+  32 × 32 par face, avec des harmoniques sphériques calculées une fois. Il
+  donne les reflets du chrome et de la peinture et l'ambiance du ciel. Coupé
+  en qualité Basse : trop coûteux par pixel sur les petits mobiles.
+- **La zone d'ombre suit le joueur** (± 24 m, calée sur la grille des
+  texels) : les ombres restent nettes partout, sans scintiller.
+
+### Onglet DEV (triches)
+
+- Le panneau 📊 (F3) a deux onglets : **Infos** (statistiques, qualité,
+  réglages) et **DEV** (triches).
+- Les triches viennent d'un registre (`debug/CheatRegistry.ts`, dans
+  `ctx.cheats`). Chaque système y ajoute les siennes dans son `init()`.
+  L'onglet n'a donc pas à connaître les systèmes.
+- **Règle permanente** (aussi écrite dans `CLAUDE.md`) : toute nouvelle
+  fonctionnalité utile pour tester ou tricher ajoute sa triche.
+
+| Groupe | Triches actuelles |
+|---|---|
+| Argent | +100 €, +1 000 €, +10 000 €, remettre à 0 € |
+| Téléportation | Départ, garage, établi, route d'essai, pied et sommet de la colline. En moto, on est téléporté avec elle |
+| Moto | Ramener au garage, moto devant moi, démarrage instantané, point mort, moteur DEV (×2,5, sans bridage) |
+| Mécanique | Tout remettre à neuf, kit débridage complet, moteur d'origine, faire apparaître une pièce du catalogue, ranger les pièces |
+| Joueur | Marche rapide ×3 |
+| Monde | Lâcher une caisse (touche B) |
+
+Le **porte-monnaie** (500 € au départ) s'affiche en haut à droite. La
+boutique viendra avec l'économie.
+
+### Colline d'essai
+
+Elle se trouve en x = 30. On y vérifie en jeu les vitesses en pente :
+- montée de 80 m à 6,25 % ;
+- plateau de 20 m ;
+- descente de 80 m.
+
+## 11. Stockage gratuit : ce qui va où
 
 Le principe : **Git ne contient que des fichiers légers.** Pas de Git LFS,
 dont le quota gratuit (stockage et bande passante mensuelle) s'épuise vite,
@@ -368,7 +469,7 @@ Opus) et instanciation.
    une fois avec `npm run hooks:install`.
 3. La CI échoue si un budget est dépassé.
 
-## 11. Hébergement gratuit (à mettre en place plus tard)
+## 12. Hébergement gratuit (à mettre en place plus tard)
 
 | Hébergeur | Points clés |
 |---|---|
@@ -381,7 +482,7 @@ gratuite), puis **Capacitor** pour des applications Android/iOS. Les outils
 sont gratuits ; seule la publication sur les stores est payante (Google Play :
 25 $ une fois ; App Store : 99 $/an et un Mac).
 
-## 12. Tests et intégration continue
+## 13. Tests et intégration continue
 
 - **Unitaires (Vitest)** : modules purs (bus d'événements, résolution
   dynamique, détection GPU, choix du profil…).
@@ -411,7 +512,7 @@ sont gratuits ; seule la publication sur les stores est payante (Google Play :
   performance se font **sur de vrais appareils** : PC, Android d'entrée ou de
   milieu de gamme, iPhone.
 
-## 13. Journal des décisions
+## 14. Journal des décisions
 
 | # | Décision | Raison |
 |---|---|---|
@@ -439,14 +540,21 @@ sont gratuits ; seule la publication sur les stores est payante (Google Play :
 | D22 | Pièces en données + règles pures + atelier 3D séparé | Ajouter une pièce = une fiche ; règles testées en quelques ms |
 | D23 | Démonter = viser et maintenir ; remonter = porter près de l'emplacement (fantôme) | Geste unique sur PC, tactile et manette, à la My Summer Car |
 | D24 | Son moteur synthétisé (Web Audio) | Réagit au régime sans fichier audio (budget de taille), base pour un vrai mixage plus tard |
+| D25 | Bridage par étranglement progressif du couple (pot, cartouche, carbu) + coupure CDI | Reproduit le vrai comportement d'un 50 bridé : 50 km/h à plat, 55-60 en descente |
+| D26 | Cartouche séparée du pot, tracé partagé | Démontage réaliste (cartouche puis pot) ; la cartouche s'aligne toujours sur la queue du pot |
+| D27 | Marques fictives VARONE / TURBINO, déco dessinée en code | Réalisme visuel sans droit des marques ni fichier image |
+| D28 | Modèles détaillés construits en code, matériaux partagés + couleurs par sommet | Beaucoup de détails, peu d'appels GPU ; en attendant les modèles Blender |
+| D29 | Ciel de reflets procédural, coupé en qualité Basse | Reflets PBR crédibles sans fichier HDR ; préserve les petits mobiles |
+| D30 | Registre de triches alimenté par chaque système (onglet DEV) | L'onglet grandit avec le jeu sans dépendre des systèmes ; règle écrite dans CLAUDE.md |
 
-## 14. Feuille de route
+## 15. Feuille de route
 
 0. ✅ **Fondations** : moteur, physique, boucle, profils de qualité, stats, tests, CI.
 1. ✅ **Joueur** : déplacement à la première personne, commandes clavier/souris, tactile et manette, prendre, porter et lancer.
 2. ✅ **Cyclomoteur conduisible** : physique à rayons, équilibre, moteur 2T bridé, monter/descendre, tableau de bord.
 3. ✅ **Garage, pièces et boîte de vitesses** : supermotard 50 à boîte 6, embrayage, kick, atelier (démontage/remontage), son moteur.
-4. **Streaming** des morceaux du monde + origine flottante.
-5. **Économie, inventaire, sauvegarde** (IndexedDB) : acheter/vendre des pièces, garder sa moto d'une partie à l'autre.
-6. **Outils et usure** : clés de différentes tailles, usure des pièces en roulant, pannes.
-7. Ensuite : chaîne d'assets semi-réalistes, audio, PWA, Capacitor, contenu.
+4. ✅ **Réalisme et outils de test** : bridage réaliste, pot passage haut + cartouche, marques fictives, moto détaillée, reflets, onglet DEV, argent, colline d'essai.
+5. **Streaming** des morceaux du monde + origine flottante.
+6. **Économie, inventaire, sauvegarde** (IndexedDB) : acheter/vendre des pièces, garder sa moto d'une partie à l'autre.
+7. **Outils et usure** : clés de différentes tailles, usure des pièces en roulant, pannes.
+8. Ensuite : chaîne d'assets semi-réalistes, audio, PWA, Capacitor, contenu.
