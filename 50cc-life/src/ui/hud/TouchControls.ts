@@ -23,6 +23,9 @@ export class TouchControls {
   private readonly crouchButton: HTMLButtonElement;
   private readonly useButton: HTMLButtonElement;
   private readonly jumpButton: HTMLButtonElement;
+  private readonly rideCluster: HTMLElement;
+  private readonly engineButton: HTMLButtonElement;
+  private readonly clutchButton: HTMLButtonElement;
   private readonly hint: HTMLElement;
   private riding = false;
   private focus: InteractionFocus = NO_FOCUS;
@@ -54,6 +57,20 @@ export class TouchControls {
     this.crouchButton = this.button(t('touch.crouch'), 'touch-btn--crouch');
     this.bindTap(this.crouchButton, () => this.toggleCrouch());
 
+    // Commandes de conduite (boîte manuelle)
+    this.engineButton = this.button(t('touch.engineStart'), 'touch-btn--engine');
+    this.bindHold(this.engineButton, 'engine');
+    this.clutchButton = this.button(t('touch.clutch'), 'touch-btn--clutch');
+    this.bindHold(this.clutchButton, 'clutch');
+    const gearUp = this.button('+', 'touch-btn--gear-up');
+    gearUp.setAttribute('aria-label', t('touch.gearUp'));
+    this.bindHold(gearUp, 'gearUp');
+    const gearDown = this.button('−', 'touch-btn--gear-down');
+    gearDown.setAttribute('aria-label', t('touch.gearDown'));
+    this.bindHold(gearDown, 'gearDown');
+    this.rideCluster = el('div', { className: 'touch-ride' }, [this.engineButton, this.clutchButton, gearDown, gearUp]);
+    this.rideCluster.hidden = true;
+
     this.hint = el('p', { className: 'touch-hint', text: t('touch.hint') });
     const cluster = el('div', { className: 'touch-buttons' }, [
       this.useButton,
@@ -62,15 +79,23 @@ export class TouchControls {
       this.throwButton,
       jump,
     ]);
-    this.root = el('div', { className: 'ui-layer touch' }, [this.base, cluster, this.hint]);
+    this.root = el('div', { className: 'ui-layer touch' }, [this.base, cluster, this.rideCluster, this.hint]);
     uiRoot.appendChild(this.root);
 
     this.root.hidden = input.scheme !== 'touch';
     window.setTimeout(() => (this.hint.hidden = true), 8000);
     bus.on('input:scheme', ({ scheme }) => (this.root.hidden = scheme !== 'touch'));
     bus.on('interaction:focus', (focus) => this.onFocus(focus));
-    bus.on('vehicle:mounted', () => this.setRiding(true));
+    bus.on('vehicle:mounted', ({ manual }) => {
+      this.setRiding(true);
+      this.rideCluster.hidden = !manual;
+    });
     bus.on('vehicle:dismounted', () => this.setRiding(false));
+    bus.on('vehicle:telemetry', ({ running, manual, autoClutch }) => {
+      this.engineButton.textContent = running ? t('touch.engineStop') : t('touch.engineStart');
+      this.engineButton.classList.toggle('is-attention', !running);
+      this.clutchButton.hidden = !manual || autoClutch;
+    });
     input.touch.onStick = (view) => this.renderStick(view);
     this.renderGrab();
   }
@@ -90,6 +115,7 @@ export class TouchControls {
     this.riding = riding;
     if (riding && this.crouchOn) this.toggleCrouch();
     for (const button of [this.jumpButton, this.crouchButton, this.grabButton]) button.hidden = riding;
+    if (!riding) this.rideCluster.hidden = true;
     this.throwButton.hidden = riding || !this.focus.holding;
     this.renderUse();
   }
@@ -98,6 +124,9 @@ export class TouchControls {
     const label = this.riding ? t('vehicle.dismount') : this.focus.useLabel;
     this.useButton.hidden = label === null;
     if (label) this.useButton.textContent = label;
+    // Action à maintenir : le bouton se remplit.
+    this.useButton.style.setProperty('--p', String(this.riding ? 0 : this.focus.progress));
+    this.useButton.classList.toggle('is-hold', !this.riding && this.focus.hold);
   }
 
   private toggleGrab(): void {

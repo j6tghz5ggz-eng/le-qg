@@ -27,7 +27,9 @@ import type { PhysicsEngine } from '@babylonjs/core/Physics/v2/physicsEngine';
 import { PhysicsShapeBox, PhysicsShapeContainer, PhysicsShapeSphere } from '@babylonjs/core/Physics/v2/physicsShape';
 import type { Scene } from '@babylonjs/core/scene';
 import { ALL_BUT_PLAYER, Layer } from '../../core/physics/layers';
-import { Drivetrain } from '../simulation/Drivetrain';
+import { AutomaticPowertrain } from '../simulation/Drivetrain';
+import { ManualDrivetrain } from '../simulation/ManualDrivetrain';
+import type { Powertrain } from '../simulation/Powertrain';
 import {
   GRAVITY_ACCEL,
   aeroDrag,
@@ -44,18 +46,33 @@ import type { BikeSpec } from './specs';
 export interface BikeControls {
   /** 0 à 1 */
   readonly throttle: number;
-  /** 0 à 1 */
+  /** Frein avant + arrière couplés, 0 à 1. */
   readonly brake: number;
+  /** Frein arrière seul (pédale), 0 à 1. */
+  readonly rearBrake: number;
   /** -1 (gauche) à 1 (droite) */
   readonly steer: number;
+  /** Levier d'embrayage : 0 = embrayé, 1 = débrayé. */
+  readonly clutch: number;
 }
 
-export const PARKED: BikeControls = { throttle: 0, brake: 1, steer: 0 };
+/** Moto garée : freins serrés, embrayage tiré (une vitesse engagée ne la bloque pas). */
+export const PARKED: BikeControls = { throttle: 0, brake: 1, rearBrake: 1, steer: 0, clutch: 1 };
+
+/** Crée la chaîne de traction décrite par la fiche. */
+function createPowertrain(spec: BikeSpec): Powertrain {
+  return spec.powertrain.kind === 'manual'
+    ? new ManualDrivetrain(spec.powertrain.spec)
+    : new AutomaticPowertrain(spec.powertrain.spec);
+}
 
 export interface BikeTelemetry {
   readonly speedKmh: number;
   readonly rpm: number;
   readonly limiterRpm: number;
+  readonly gear: string;
+  readonly running: boolean;
+  readonly clutch: number;
   readonly throttle: number;
   readonly brake: number;
   readonly steerDeg: number;
@@ -107,7 +124,7 @@ const MAX_LATERAL_ACCEL = 9;
 export class Bike {
   readonly visual: BikeVisual;
   readonly body: PhysicsBody;
-  readonly drivetrain: Drivetrain;
+  readonly powertrain: Powertrain;
   private readonly bodyNode: TransformNode;
   private readonly physicsEngine: PhysicsEngine;
   private readonly shapeAlone: PhysicsShapeContainer;
@@ -161,7 +178,7 @@ export class Bike {
     yaw: number,
   ) {
     this.physicsEngine = scene.getPhysicsEngine() as PhysicsEngine;
-    this.drivetrain = new Drivetrain(spec.drivetrain);
+    this.powertrain = createPowertrain(spec);
     this.visual = createBikeVisual(scene, spec);
 
     const restHeight = spec.wheelRadius + spec.suspension.restLength - spec.mountHeight - 0.03;
@@ -239,8 +256,9 @@ export class Bike {
     this.hasRider = present;
     this.body.shape = present ? this.shapeRidden : this.shapeAlone;
     this.applyMass();
-    if (present) this.drivetrain.start();
-    else this.drivetrain.stop();
+    // Boîte automatique : contact mis en montant. Boîte manuelle : il faut kicker.
+    if (present && !this.powertrain.manual) this.powertrain.start(1);
+    if (!present) this.powertrain.stop();
     this.visual.stand.setEnabled(!present);
   }
 
@@ -261,14 +279,18 @@ export class Bike {
     this.steerAngle = approach(this.steerAngle, steerTarget, spec.steer.rate * dt);
 
     // Moteur (force calculée avec la vitesse de roue du pas précédent).
+    // L'inertie des pièces en rotation (énorme en 1re) réduit l'accélération.
     const rear = this.wheels[1]!;
-    let drive = this.drivetrain.update(dt, controls.throttle, rear.grounded ? rear.speed : 0);
+    const output = this.powertrain.update(dt, { throttle: controls.throttle, clutch: controls.clutch }, rear.grounded ? rear.speed : 0);
+    let drive = (output.force * mass) / (mass + output.inertiaMass);
     let brake = controls.brake;
+    let rearBrake = Math.max(controls.brake * 0.7, controls.rearBrake);
     // Recul « aux pieds » : frein maintenu à l'arrêt.
     if (this.hasRider && controls.brake > 0.5 && controls.throttle < 0.05 && Math.abs(speed) < 0.3) this.paddleTimer += dt;
     else if (speed > -0.05 || controls.brake < 0.5) this.paddleTimer = 0;
     if (this.paddleTimer > PADDLE_DELAY) {
       brake = 0;
+      rearBrake = 0;
       drive = speed > -PADDLE_SPEED ? -PADDLE_FORCE : 0;
     }
 
@@ -276,7 +298,7 @@ export class Bike {
     for (const wheel of this.wheels) {
       if (this.probeWheel(wheel, dt, mass)) grounded++;
     }
-    this.solveTires(dt, mass, drive, brake);
+    this.solveTires(dt, mass, drive, brake, rearBrake);
 
     // Traînée aérodynamique au centre de gravité (aeroDrag est négative : opposée à la vitesse).
     if (t.v.lengthSquared() > 1e-4) {
@@ -316,8 +338,11 @@ export class Bike {
     const c = this.controls;
     return {
       speedKmh: Math.abs(this.forwardSpeed) * 3.6,
-      rpm: this.drivetrain.rpm,
-      limiterRpm: this.spec.drivetrain.limiterRpm,
+      rpm: this.powertrain.rpm,
+      limiterRpm: this.powertrain.limiterRpm,
+      gear: this.powertrain.gearLabel,
+      running: this.powertrain.running,
+      clutch: c.clutch,
       throttle: c.throttle,
       brake: c.brake,
       steerDeg: (this.steerAngle * 180) / Math.PI,
@@ -418,7 +443,7 @@ export class Bike {
    * faire. Sans cela, la roue arrière défait en partie la rotation amorcée
    * par la roue avant et la moto tourne mal à basse vitesse.
    */
-  private solveTires(dt: number, mass: number, drive: number, brake: number): void {
+  private solveTires(dt: number, mass: number, drive: number, frontBrake: number, rearBrake: number): void {
     const t = this.t;
     const spec = this.spec;
     // Copie locale des vitesses, mise à jour à chaque impulsion.
@@ -434,7 +459,7 @@ export class Bike {
         const stiffness = Math.abs(wheel.speed) < 0.5 ? 1 : LATERAL_STIFFNESS;
         const wantedLat = wheel.accLat - vLat * wheel.massLat * stiffness;
         // Frein : arrête la roue sans jamais la faire repartir en arrière.
-        const brakeCap = (wheel.front ? spec.brake.front : spec.brake.rear) * brake * dt;
+        const brakeCap = (wheel.front ? spec.brake.front * frontBrake : spec.brake.rear * rearBrake) * dt;
         const totalBrake = Math.max(-brakeCap, Math.min(brakeCap, wheel.accBrake - vLong * wheel.massLong));
         // Moteur (roue arrière) + résistance au roulement : fixes pour ce pas.
         const roll = -Math.sign(wheel.speed) * Math.min(Math.abs(wheel.speed) * wheel.massLong, spec.rollingResistance * wheel.load * dt);
@@ -574,13 +599,13 @@ export class Bike {
   private createShape(withRider: boolean): PhysicsShapeContainer {
     const scene = this.scene;
     const half = this.spec.wheelBase / 2;
+    const c = this.spec.collider;
+    const box = (b: { center: readonly number[]; size: readonly number[] }): PhysicsShapeBox =>
+      new PhysicsShapeBox(Vector3.FromArray(b.center), Quaternion.Identity(), Vector3.FromArray(b.size), scene);
     const container = new PhysicsShapeContainer(scene);
-    const frame = new PhysicsShapeBox(new Vector3(0, 0.36, -0.04), Quaternion.Identity(), new Vector3(0.34, 0.46, 1.1), scene);
-    container.addChild(frame);
-    for (const z of [half, -half]) container.addChild(new PhysicsShapeSphere(new Vector3(0, 0, z), 0.15, scene));
-    if (withRider) {
-      container.addChild(new PhysicsShapeBox(new Vector3(0, 0.95, -0.25), Quaternion.Identity(), new Vector3(0.42, 0.75, 0.36), scene));
-    }
+    container.addChild(box(c.frame));
+    for (const z of [half, -half]) container.addChild(new PhysicsShapeSphere(new Vector3(0, 0, z), c.wheelStop, scene));
+    if (withRider) container.addChild(box(c.rider));
     container.material = { friction: 0.35, restitution: 0.05 };
     container.filterMembershipMask = Layer.VEHICLE;
     return container;

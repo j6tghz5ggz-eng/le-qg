@@ -10,7 +10,9 @@ const executablePath = process.env.PW_CHROMIUM_PATH || undefined;
 
 export default defineConfig({
   testDir: 'tests/e2e',
-  timeout: 90_000,
+  // Scénarios longs (marcher jusqu'au garage…) : le rendu logiciel des
+  // machines de test ralentit la simulation quand plusieurs tests tournent.
+  timeout: 150_000,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   use: {

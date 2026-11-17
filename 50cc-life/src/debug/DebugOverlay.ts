@@ -13,6 +13,12 @@ import { QUALITY_IDS, isQualityId } from '../core/quality/qualityProfiles';
 import { el } from '../ui/dom';
 import { t } from '../ui/i18n';
 
+export interface DebugToggle {
+  readonly label: string;
+  get(): boolean;
+  set(value: boolean): void;
+}
+
 export interface DebugAction {
   readonly label: string;
   /** Touche clavier (KeyboardEvent.code), ex. « KeyC ». */
@@ -43,6 +49,7 @@ export class DebugOverlay {
     private readonly actions: readonly DebugAction[],
     /** Lignes supplémentaires (ex. position du joueur). */
     private readonly extraLines: () => string[] = () => [],
+    toggles: readonly DebugToggle[] = [],
   ) {
     this.instrumentation = new SceneInstrumentation(ctx.scene);
     this.text = el('pre', { className: 'debug__stats' });
@@ -52,9 +59,17 @@ export class DebugOverlay {
       button.addEventListener('click', () => action.run());
       actionBar.appendChild(button);
     }
+    const toggleList = el('div', { className: 'debug__toggles' });
+    toggles.forEach((toggle, index) => {
+      const input = el('input', { attrs: { type: 'checkbox', id: `debug-toggle-${index}` } });
+      input.checked = toggle.get();
+      input.addEventListener('change', () => toggle.set(input.checked));
+      toggleList.appendChild(el('label', { className: 'debug__toggle-row', attrs: { for: input.id } }, [input, document.createTextNode(` ${toggle.label}`)]));
+    });
     this.panel = el('div', { className: 'debug', attrs: { 'aria-label': 'Statistiques' } }, [
       this.text,
       this.createQualitySelect(),
+      toggleList,
       actionBar,
     ]);
     this.panel.hidden = !import.meta.env.DEV;

@@ -1,7 +1,8 @@
 /**
- * Petite API en lecture seule exposée sur window.__50CC__, utilisée par
- * les tests automatiques (Playwright) et pratique dans la console du
- * navigateur. Elle ne permet pas de tricher sur la progression.
+ * Petite API exposée sur window.__50CC__, utilisée par les tests
+ * automatiques (Playwright) et pratique dans la console du navigateur.
+ * Lecture seule, sauf lookAt (oriente le regard) : rien qui permette de
+ * tricher sur la progression.
  */
 import type { GameState } from '../app/events';
 
@@ -28,7 +29,16 @@ export interface DebugHooks {
     readonly heading: number;
     readonly lean: number;
     readonly wheelsOnGround: number;
+    readonly gear: string;
+    readonly running: boolean;
   } | null;
+  /** Emplacements occupés du moteur de la première moto. */
+  readonly bikeParts: string[];
+  slotPosition(slot: string): { x: number; y: number; z: number } | null;
+  /** Pièces posées dans le monde. */
+  looseParts(): Array<{ name: string; x: number; y: number; z: number }>;
+  /** Tourne le regard du joueur vers un point (tests). */
+  lookAt(x: number, y: number, z: number): void;
   /** Première moto du monde (garée ou non). */
   readonly parkedBike: { readonly x: number; readonly y: number; readonly z: number; readonly lean: number } | null;
   probeY(): number | null;

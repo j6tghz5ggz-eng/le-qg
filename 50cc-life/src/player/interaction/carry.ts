@@ -21,8 +21,12 @@ export const CARRY = {
   gain: 14,
   /** Vitesse max de l'objet porté (m/s). */
   maxSpeed: 12,
-  /** Objet coincé trop loin du point de maintien : on le lâche (m). */
-  breakDistance: 2.2,
+  /**
+   * Objet coincé trop loin du point de maintien : on le lâche (m). Plus que
+   * le diamètre du cercle décrit par la main (2 × 1,3 m) : un demi-tour
+   * rapide de la souris ne fait pas tomber l'objet.
+   */
+  breakDistance: 2.8,
   /** Freinage de la rotation de l'objet porté. */
   heldAngularDamping: 6,
   /** Impulsion du lancer (N·s) : un objet léger part plus vite. */

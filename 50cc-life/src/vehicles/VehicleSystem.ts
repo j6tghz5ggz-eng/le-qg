@@ -3,10 +3,15 @@
  * conduite, tableau de bord.
  *
  * Commandes de conduite (réutilisent celles du joueur) :
- * - clavier : avancer = gaz, reculer = frein, gauche/droite = guidon ;
- * - tactile : joystick (haut = gaz, bas = frein, côtés = guidon) ;
- * - manette : gâchettes (gaz/frein) + stick gauche.
+ * - clavier : avancer = gaz, reculer = frein, gauche/droite = guidon,
+ *   Espace = frein arrière, Maj = embrayage, R / F ou molette = vitesses,
+ *   C = moteur (kick / couper) ;
+ * - tactile : joystick (haut = gaz, bas = frein, côtés = guidon) + boutons ;
+ * - manette : gâchettes (gaz/frein) + stick gauche + boutons.
  * E / « Descendre » / Y pour descendre (à l'arrêt ou presque).
+ *
+ * Embrayage : manuel (le levier se tire vite et se relâche en ~0,45 s, ce
+ * qui laisse patiner au démarrage) ou automatique (aide, réglable).
  */
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
@@ -16,9 +21,14 @@ import type { GameContext, GameSystem } from '../app/GameContext';
 import { ALL_BUT_PLAYER } from '../core/physics/layers';
 import type { PlayerController } from '../player/PlayerController';
 import { PLAYER } from '../player/movement';
+import { readPref, writePref } from '../core/save/safeStorage';
 import { t } from '../ui/i18n';
 import { Bike, PARKED, type BikeControls } from './bike/Bike';
 import type { BikeSpec } from './bike/specs';
+import { EngineSound } from './audio/EngineSound';
+import { AutoClutch } from './simulation/AutoClutch';
+import { ManualDrivetrain } from './simulation/ManualDrivetrain';
+import type { ShiftResult, StartResult } from './simulation/Powertrain';
 
 export interface ShadowHost {
   addShadowCaster(mesh: Mesh): void;
@@ -32,10 +42,16 @@ export interface VehicleSpawn {
 
 /** Fréquence d'envoi du tableau de bord (Hz). */
 const TELEMETRY_HZ = 10;
-/** Distance pour monter sans viser la moto (m). */
-const MOUNT_RADIUS = 1.7;
+/** Distance (depuis le centre de la moto) pour monter sans la viser (m) : un supermotard fait 2 m de long. */
+const MOUNT_RADIUS = 2.0;
 /** Sous cette altitude, la moto est replacée à son point de départ. */
 const FALL_LIMIT = -30;
+/** Vitesse du levier d'embrayage manuel (par seconde). */
+const CLUTCH_PULL_RATE = 12;
+/** Relâché en ~0,8 s : au clavier, impossible de doser le levier, on le fait pour le joueur. */
+const CLUTCH_RELEASE_RATE = 1.25;
+const AUTO_CLUTCH_PREF = 'autoClutch';
+const RAD_TO_RPM = 60 / (2 * Math.PI);
 
 export class VehicleSystem implements GameSystem {
   readonly id = 'vehicles';
@@ -44,6 +60,11 @@ export class VehicleSystem implements GameSystem {
   private physicsEngine!: PhysicsEngine;
   private riding: Bike | null = null;
   private telemetryTimer = 0;
+  private clutchLever = 1;
+  private readonly autoClutch = new AutoClutch();
+  private autoClutchOn = false;
+  private engineSound: EngineSound | null = null;
+  private lastThrottle = 0;
   private readonly ray = new PhysicsRaycastResult();
   private readonly spawns = new Map<Bike, VehicleSpawn>();
 
@@ -61,7 +82,22 @@ export class VehicleSystem implements GameSystem {
   init(ctx: GameContext): void {
     this.ctx = ctx;
     this.physicsEngine = ctx.scene.getPhysicsEngine() as PhysicsEngine;
+    const saved = readPref(AUTO_CLUTCH_PREF);
+    // Par défaut : embrayage auto sur écran tactile, manuel ailleurs.
+    this.autoClutchOn = saved === null ? ctx.input.scheme === 'touch' : saved === '1';
+    const audio = ctx.audio;
+    if (audio.context && audio.master) this.engineSound = new EngineSound(audio.context, audio.master);
     for (const spawn of this.initialSpawns) this.spawn(spawn);
+  }
+
+  /** Aide « embrayage automatique » (mémorisée). */
+  get autoClutchEnabled(): boolean {
+    return this.autoClutchOn;
+  }
+
+  set autoClutchEnabled(on: boolean) {
+    this.autoClutchOn = on;
+    writePref(AUTO_CLUTCH_PREF, on ? '1' : '0');
   }
 
   spawn(spawn: VehicleSpawn): Bike {
@@ -71,7 +107,7 @@ export class VehicleSystem implements GameSystem {
       this.shadows.addShadowCaster(mesh);
     }
     this.ctx.interactables.register(bike.body, {
-      label: t('vehicle.cyclo'),
+      label: spawn.spec.label,
       useLabel: t('vehicle.mount'),
       use: () => this.mount(bike),
     });
@@ -85,8 +121,9 @@ export class VehicleSystem implements GameSystem {
     if (this.riding || bike.rider) return;
     this.riding = bike;
     bike.setRider(true);
+    this.clutchLever = 1;
     this.player.mount(bike.visual.eye, () => bike.leanAngle);
-    this.ctx.bus.emit('vehicle:mounted', { label: t('vehicle.cyclo') });
+    this.ctx.bus.emit('vehicle:mounted', { label: bike.spec.label, manual: bike.powertrain.manual });
   }
 
   /** Descend si la moto roule assez lentement et s'il y a la place. */
@@ -111,7 +148,7 @@ export class VehicleSystem implements GameSystem {
 
   fixedUpdate(dt: number): void {
     for (const bike of this.bikes) {
-      bike.fixedUpdate(dt, bike === this.riding ? this.readControls() : PARKED);
+      bike.fixedUpdate(dt, bike === this.riding ? this.readControls(bike, dt) : PARKED);
     }
   }
 
@@ -120,34 +157,111 @@ export class VehicleSystem implements GameSystem {
   }
 
   update(dt: number, alpha: number): void {
-    if (this.riding && this.ctx.input.consumePress('use')) this.tryDismount();
+    const input = this.ctx.input;
+    if (this.riding) {
+      const riding = this.riding;
+      if (input.consumePress('use')) this.tryDismount();
+      if (input.consumePress('engine')) this.toggleEngine(riding);
+      if (input.consumePress('gearUp')) this.shift(riding, 1);
+      if (input.consumePress('gearDown')) this.shift(riding, -1);
+      if (riding.powertrain.consumeStall()) this.notice(t('vehicle.stalled'));
+    }
     for (const bike of this.bikes) {
       bike.updateVisual(alpha);
       if (bike.position.y < FALL_LIMIT) this.respawn(bike);
     }
     const bike = this.riding;
+    const pt = bike?.powertrain;
+    this.engineSound?.update({
+      rpm: pt?.rpm ?? 0,
+      throttle: this.lastThrottle,
+      running: pt?.running ?? false,
+      loudness: pt?.loudness ?? 0.4,
+    });
     if (!bike) return;
     this.telemetryTimer += dt;
     if (this.telemetryTimer >= 1 / TELEMETRY_HZ) {
       this.telemetryTimer = 0;
       const data = bike.telemetry();
-      this.ctx.bus.emit('vehicle:telemetry', { speedKmh: data.speedKmh, rpm: data.rpm, limiterRpm: data.limiterRpm });
+      this.ctx.bus.emit('vehicle:telemetry', {
+        speedKmh: data.speedKmh,
+        rpm: data.rpm,
+        limiterRpm: data.limiterRpm,
+        gear: data.gear,
+        running: data.running,
+        manual: bike.powertrain.manual,
+        autoClutch: this.autoClutchOn,
+      });
     }
   }
 
   dispose(): void {
+    this.engineSound?.dispose();
     for (const bike of this.bikes) bike.dispose();
     this.bikes.length = 0;
   }
 
-  private readControls(): BikeControls {
+  private readControls(bike: Bike, dt: number): BikeControls {
     const input = this.ctx.input;
     const move = input.getMoveAxes();
+    const throttle = Math.max(input.getAxis('throttle'), Math.max(0, move.y));
+    this.lastThrottle = throttle;
+    const powertrain = bike.powertrain;
+    if (powertrain instanceof ManualDrivetrain && this.autoClutchOn) {
+      const wheelRpm = (Math.max(bike.forwardSpeed, 0) / powertrain.spec.wheelRadius) * powertrain.ratio * RAD_TO_RPM;
+      this.clutchLever = this.autoClutch.update(dt, {
+        rpm: powertrain.rpm,
+        gear: powertrain.gear,
+        throttle,
+        wheelRpm,
+        running: powertrain.running,
+      });
+    } else {
+      const target = input.isHeld('clutch') ? 1 : 0;
+      const rate = target > this.clutchLever ? CLUTCH_PULL_RATE : CLUTCH_RELEASE_RATE;
+      const step = rate * dt;
+      this.clutchLever = target > this.clutchLever ? Math.min(target, this.clutchLever + step) : Math.max(target, this.clutchLever - step);
+    }
     return {
-      throttle: Math.max(input.getAxis('throttle'), Math.max(0, move.y)),
+      throttle,
       brake: Math.max(input.getAxis('brake'), Math.max(0, -move.y)),
+      rearBrake: input.isHeld('rearBrake') ? 1 : 0,
       steer: move.x,
+      clutch: this.clutchLever,
     };
+  }
+
+  /** C : kick si le moteur est coupé, coupe-circuit s'il tourne. */
+  private toggleEngine(bike: Bike): void {
+    const powertrain = bike.powertrain;
+    if (powertrain.running) {
+      powertrain.stop();
+      this.notice(t('vehicle.engineOff'));
+      return;
+    }
+    const clutch = this.autoClutchOn ? 1 : this.clutchLever;
+    const result: StartResult = powertrain.start(clutch);
+    if (result.ok) this.notice(t('vehicle.engineOn'));
+    else if (result.reason === 'missing') this.notice(`${t('vehicle.cantStart')} ${result.missing.join(', ')}`);
+    else if (result.reason === 'inGear') this.notice(t('vehicle.neutralToStart'));
+    else this.notice(t('vehicle.kickFailed'));
+  }
+
+  private shift(bike: Bike, direction: 1 | -1): void {
+    const powertrain = bike.powertrain;
+    if (!powertrain.manual) return;
+    let clutch = this.clutchLever;
+    if (this.autoClutchOn) {
+      this.autoClutch.notifyShift();
+      this.clutchLever = 1;
+      clutch = 1;
+    }
+    const result: ShiftResult = direction > 0 ? powertrain.shiftUp(clutch) : powertrain.shiftDown(clutch);
+    if (!result.ok && result.reason === 'clutch') this.notice(t('vehicle.clutchToShift'));
+  }
+
+  private notice(message: string): void {
+    this.ctx.bus.emit('ui:notice', { message });
   }
 
   private respawn(bike: Bike): void {

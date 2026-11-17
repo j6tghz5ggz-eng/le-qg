@@ -63,7 +63,7 @@ presque chaque semaine : on met à jour volontairement, tous les paquets
 ├── index.html                 entrée du jeu (canvas + couche UI)
 ├── package.json · tsconfig*.json · vite.config.ts · playwright.config.ts
 ├── public/                    fichiers servis tels quels (icône, puis assets optimisés)
-├── assets-src/                sources lourdes : HORS GIT (voir § 9)
+├── assets-src/                sources lourdes : HORS GIT (voir § 10)
 ├── tools/check-sizes.mjs      budgets de taille
 ├── .githooks/pre-commit       refuse les fichiers de plus de 10 Mo
 ├── docs/ARCHITECTURE.md       ce document
@@ -83,19 +83,21 @@ presque chaque semaine : on met à jour volontairement, tous les paquets
     │   ├── platform/          détection de l'appareil et du GPU
     │   ├── quality/           profils, résolution dynamique
     │   ├── rendering/         post-traitements
+    │   ├── audio/             contexte Web Audio (déverrouillé au premier geste)
     │   └── save/              préférences (puis sauvegardes IndexedDB)
-    ├── player/                joueur à la 1re personne, interaction (prendre, lancer)
+    ├── player/                joueur à la 1re personne, interaction (prendre, lancer, démonter)
+    ├── mechanics/             pièces, emplacements, règles de démontage, atelier 3D
     ├── vehicles/
-    │   ├── bike/              physique de la moto, modèle 3D provisoire, fiches techniques
-    │   └── simulation/        moteur 2T + variateur + embrayage (TS pur, testé)
+    │   ├── bike/              physique de la moto, modèles 3D provisoires, fiches techniques
+    │   ├── simulation/        boîte manuelle, embrayage auto, variateur (TS pur, testé)
+    │   └── audio/             son moteur 2 temps synthétisé
     ├── world/                 environnement (ciel, lumière, ombres), scène de test
     ├── debug/                 statistiques, API pour les tests
     └── ui/                    écrans et HUD HTML/CSS, commandes tactiles, textes (i18n)
 ```
 
-Dossiers prévus aux étapes suivantes : `core/assets/`, `core/audio/`,
-`world/streaming/`, `mechanics/`, `economy/`, `inventory/`, `garage/`,
-`data/` (pièces et motos décrites en données).
+Dossiers prévus aux étapes suivantes : `core/assets/`, `world/streaming/`,
+`economy/`, `inventory/`, `data/` (catalogues en données).
 
 ## 5. Boucle de jeu : pas fixe à 60 Hz
 
@@ -257,7 +259,77 @@ deux-roues.
 - modèle 3D provisoire (à remplacer par un modèle Blender) ;
 - pas de son moteur.
 
-## 9. Stockage gratuit : ce qui va où
+## 9. Supermotard à boîte, atelier et garage (étape 3)
+
+### Le supermotard 50 à boîte
+
+Fiche technique (`vehicles/bike/specs.ts`) inspirée des supermotards 50 cm³
+des années 2020, sans marque réelle : 98 kg, roues de 17", 16 cm de
+débattement, freins à disque, moteur 2T à boîte 6.
+
+| Élément | Modèle (`vehicles/simulation/ManualDrivetrain.ts`, testé) |
+|---|---|
+| Moteur | Courbe de couple (pic de 4,5 N·m vers 9 000 tr/min), inertie du vilebrequin, frottements et pompage, vis de ralenti (≈ 1 600 tr/min) |
+| Embrayage | À friction, avec trois états. **Débrayé** : le moteur tourne librement. **Patinage** : couple limité et morsure progressive, ce qui permet de démarrer en montant dans les tours. **Collé** : le moteur est lié à la roue. Au clavier, le levier se relâche en 0,8 s (on ne peut pas doser une touche). |
+| Calage | Moteur entraîné sous 950 tr/min : il cale (lâcher l'embrayage d'un coup au ralenti, choc à l'arrêt en vitesse) |
+| Boîte | Séquentielle N - 1 - 2 - … - 6 (point mort sous la 1re, plus fiable aux touches que le « demi-clic » réel), rapports d'un moteur 50 à boîte, embrayage obligatoire pour passer |
+| Démarrage | Kick au point mort ou embrayage tiré, avec une chance de réussite qui dépend de la bougie. Démarrage à la poussette possible. |
+| Bridage | Boîtier CDI coupant à 6 500 tr/min : **45 km/h en 6e**. Le CDI débridé (pièce) coupe à 11 500 tr/min : **70 à 85 km/h**. Vérifié par simulation dans les tests. |
+| Inertie | Les pièces en rotation s'ajoutent à la masse quand l'embrayage est collé (≈ 35 kg équivalents en 1re, 4 kg en 6e) |
+| Embrayage automatique | Aide optionnelle (`AutoClutch`) qui se comporte comme un embrayage centrifuge. Activée par défaut sur tactile. |
+
+La moto ne connaît qu'une interface `Powertrain`. Le variateur du
+cyclomoteur (étape 2) l'implémente aussi, pour de futurs scooters et
+mobylettes.
+
+### L'atelier : pièces démontables
+
+- **Données** (`mechanics/parts.ts`, `slots.ts`). Chaque pièce a une fiche :
+  nom, catégorie, masse, prix, effets, forme provisoire. Chaque emplacement
+  indique sur quoi il se monte (`requires`), d'où découle l'ordre de
+  démontage : bougie → culasse → (pot) → cylindre → piston. Le nombre de
+  fixations donne la durée de dévissage.
+- **Règles** (`EngineAssembly`, testé) : démonter, remonter, raisons de refus
+  (« Retirez d'abord : Bougie », « Il faut d'abord : Culasse »), et effet sur
+  le moteur (`EngineStats`). Une pièce indispensable manquante empêche de
+  démarrer. Sans pot : bruit au maximum et −25 % de puissance. Un piston usé
+  fait perdre de la compression. Une bougie usée démarre mal. Le pot course
+  donne +15 %.
+- **En 3D** (`MechanicsSystem`) :
+  - viser une pièce montée et **maintenir Utiliser** la dévisse (anneau de
+    progression) ; la pièce devient un objet physique que l'on porte ;
+  - en approchant une pièce portée de son emplacement libre, un **fantôme**
+    s'affiche, et maintenir Utiliser la revisse ;
+  - il faut une moto à l'arrêt, sans pilote et moteur coupé.
+- **Visée** :
+  - les pièces montées sont visées par leur modèle 3D, car elles sont
+    « dans » la forme physique de la moto, qui passe donc après ;
+  - **aide à la visée** pour les petites pièces : la bougie compte comme
+    visée si le rayon passe à moins de 3 cm.
+- **Robustesse physique** : volume de collision et masse minimaux pour les
+  petites pièces (sinon une bougie traverse le décor), et sol avec un volume
+  de collision épais.
+
+### Le garage
+
+- Porte de 3,4 m et dalle surélevée de 15 cm.
+- Établi avec les pièces de rechange : bougie neuve, CDI débridé, pot course.
+- Étagère, et plafonnier commandé par un interrupteur. On l'éteint en
+  mettant son intensité à 0, sans désactiver la lampe, pour éviter de
+  recompiler les shaders.
+
+### Son
+
+Moteur 2 temps **synthétisé en temps réel** (`vehicles/audio/EngineSound.ts`),
+sans fichier à télécharger :
+- deux oscillateurs à la fréquence d'allumage (régime / 60) ;
+- un bruit filtré pour le grésillement, puis une saturation ;
+- un filtre qui s'ouvre avec les gaz.
+
+Le volume dépend du pot. Le son démarre au premier geste du joueur (règle des
+navigateurs), et le panneau 📊 permet de le couper.
+
+## 10. Stockage gratuit : ce qui va où
 
 Le principe : **Git ne contient que des fichiers légers.** Pas de Git LFS,
 dont le quota gratuit (stockage et bande passante mensuelle) s'épuise vite,
@@ -296,7 +368,7 @@ Opus) et instanciation.
    une fois avec `npm run hooks:install`.
 3. La CI échoue si un budget est dépassé.
 
-## 10. Hébergement gratuit (à mettre en place plus tard)
+## 11. Hébergement gratuit (à mettre en place plus tard)
 
 | Hébergeur | Points clés |
 |---|---|
@@ -309,7 +381,7 @@ gratuite), puis **Capacitor** pour des applications Android/iOS. Les outils
 sont gratuits ; seule la publication sur les stores est payante (Google Play :
 25 $ une fois ; App Store : 99 $/an et un Mac).
 
-## 11. Tests et intégration continue
+## 12. Tests et intégration continue
 
 - **Unitaires (Vitest)** : modules purs (bus d'événements, résolution
   dynamique, détection GPU, choix du profil…).
@@ -321,9 +393,16 @@ sont gratuits ; seule la publication sur les stores est payante (Google Play :
   - Joueur au tactile : prendre puis lancer, bouton Accroupir.
   - Cyclomoteur au clavier : monter, accélérer, tourner (la moto penche),
     freiner, descendre ; refus de descendre en roulant vite.
-  - Cyclomoteur au tactile : vrai glisser du pouce sur le joystick (protocole
-    Chrome DevTools) pour marcher, accélérer et freiner, puis boutons Monter et
-    Descendre.
+  - Supermotard au clavier :
+    - kick, embrayage, 1re, démarrage, passage en 2e, freinage, descente ;
+    - calage en lâchant l'embrayage sans gaz ;
+    - passage refusé sans embrayer.
+  - Supermotard au tactile : vrai glisser du pouce sur le joystick (protocole
+    Chrome DevTools) jusqu'au garage, Monter, Démarrer, +, gaz, Descendre.
+  - Atelier au clavier : démonter la bougie (maintenir E) empêche le
+    démarrage ; la culasse refuse tant que la bougie est montée.
+  - Atelier au tactile : remplacer la bougie usée par la neuve de l'établi.
+    On démonte, on va à l'établi, on prend, on revient, on remonte.
   - Le déplacement est piloté par la position, pas par le temps, pour ne pas
     dépendre de la vitesse de la machine.
 - **CI GitHub Actions** (`.github/workflows/50cc-life.yml`) : types, tests,
@@ -332,7 +411,7 @@ sont gratuits ; seule la publication sur les stores est payante (Google Play :
   performance se font **sur de vrais appareils** : PC, Android d'entrée ou de
   milieu de gamme, iPhone.
 
-## 12. Journal des décisions
+## 13. Journal des décisions
 
 | # | Décision | Raison |
 |---|---|---|
@@ -354,14 +433,20 @@ sont gratuits ; seule la publication sur les stores est payante (Google Play :
 | D16 | Modèle 3D séparé du corps physique, interpolé | Fluide à 120/144 Hz ; le modèle Blender remplacera les formes simples sans toucher à la physique |
 | D17 | Moteur et variateur en TypeScript pur | Testés en quelques ms (vitesse max, accélération) ; base de la future simulation mécanique |
 | D18 | Accès de débogage complet (`window.__50CC_DEV__`) en développement seulement | Inspection et scripts de test, absent du build publié |
+| D19 | Supermotard 50 à boîte « dans le style de », sans marque réelle | Réalisme voulu, sans risque de droit des marques |
+| D20 | Embrayage modélisé (patinage, collage, calage), levier relâché en 0,8 s au clavier, embrayage auto en option | Conduite d'un vrai 50 à boîte, jouable au clavier comme au tactile |
+| D21 | Point mort sous la 1re | Le « demi-clic » réel n'est pas reproductible de façon fiable avec des touches |
+| D22 | Pièces en données + règles pures + atelier 3D séparé | Ajouter une pièce = une fiche ; règles testées en quelques ms |
+| D23 | Démonter = viser et maintenir ; remonter = porter près de l'emplacement (fantôme) | Geste unique sur PC, tactile et manette, à la My Summer Car |
+| D24 | Son moteur synthétisé (Web Audio) | Réagit au régime sans fichier audio (budget de taille), base pour un vrai mixage plus tard |
 
-## 13. Feuille de route
+## 14. Feuille de route
 
 0. ✅ **Fondations** : moteur, physique, boucle, profils de qualité, stats, tests, CI.
 1. ✅ **Joueur** : déplacement à la première personne, commandes clavier/souris, tactile et manette, prendre, porter et lancer.
 2. ✅ **Cyclomoteur conduisible** : physique à rayons, équilibre, moteur 2T bridé, monter/descendre, tableau de bord.
-3. **Streaming** des morceaux du monde + origine flottante.
-4. **Garage et pièces** : démontage et remontage, piloté par les données.
-5. **Simulation moteur 2 temps** reliée à la conduite.
-6. **Économie, inventaire, sauvegarde** (IndexedDB).
+3. ✅ **Garage, pièces et boîte de vitesses** : supermotard 50 à boîte 6, embrayage, kick, atelier (démontage/remontage), son moteur.
+4. **Streaming** des morceaux du monde + origine flottante.
+5. **Économie, inventaire, sauvegarde** (IndexedDB) : acheter/vendre des pièces, garder sa moto d'une partie à l'autre.
+6. **Outils et usure** : clés de différentes tailles, usure des pièces en roulant, pannes.
 7. Ensuite : chaîne d'assets semi-réalistes, audio, PWA, Capacitor, contenu.

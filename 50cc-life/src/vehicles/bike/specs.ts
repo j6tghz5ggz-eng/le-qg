@@ -6,12 +6,28 @@
  * entre les deux moyeux, à leur hauteur quand les suspensions sont
  * complètement détendues.
  */
+import type { SlotDefinition } from '../../mechanics/slots';
+import { SM50_SLOTS } from '../../mechanics/slots';
 import { CYCLO_DRIVETRAIN, type DrivetrainSpec } from '../simulation/Drivetrain';
+import { SM50_DRIVETRAIN, type ManualDrivetrainSpec } from '../simulation/ManualDrivetrain';
 
 export type Vec3Tuple = readonly [number, number, number];
 
+export type PowertrainSpec =
+  | { readonly kind: 'manual'; readonly spec: ManualDrivetrainSpec }
+  | { readonly kind: 'cvt'; readonly spec: DrivetrainSpec };
+
+export interface BoxCollider {
+  readonly center: Vec3Tuple;
+  readonly size: Vec3Tuple;
+}
+
 export interface BikeSpec {
   readonly id: string;
+  /** Nom affiché. */
+  readonly label: string;
+  /** Modèle 3D provisoire à utiliser. */
+  readonly style: 'cyclo' | 'supermotard';
   /** Masse de la moto seule (kg). */
   readonly mass: number;
   readonly riderMass: number;
@@ -54,7 +70,11 @@ export interface BikeSpec {
   /** Surface frontale × coefficient de traînée (m²). */
   readonly cdA: number;
   readonly rollingResistance: number;
-  readonly drivetrain: DrivetrainSpec;
+  readonly powertrain: PowertrainSpec;
+  /** Formes de collision : châssis, butées de roue, pilote assis. */
+  readonly collider: { readonly frame: BoxCollider; readonly wheelStop: number; readonly rider: BoxCollider };
+  /** Emplacements des pièces démontables (null = pas de mécanique). */
+  readonly engineSlots: readonly SlotDefinition[] | null;
   /** Position des yeux du pilote (repère local). */
   readonly eyeLocal: Vec3Tuple;
   /** Au-dessus de cette vitesse (m/s), on ne peut pas descendre. */
@@ -63,6 +83,8 @@ export interface BikeSpec {
 
 export const CYCLO: BikeSpec = {
   id: 'cyclo',
+  label: 'Cyclomoteur',
+  style: 'cyclo',
   mass: 70,
   riderMass: 75,
   wheelBase: 1.18,
@@ -78,7 +100,48 @@ export const CYCLO: BikeSpec = {
   lean: { max: 0.75, frequency: 8, dampingRatio: 0.9, onStand: -0.1 },
   cdA: 0.6,
   rollingResistance: 0.015,
-  drivetrain: CYCLO_DRIVETRAIN,
+  powertrain: { kind: 'cvt', spec: CYCLO_DRIVETRAIN },
+  collider: {
+    frame: { center: [0, 0.36, -0.04], size: [0.34, 0.46, 1.1] },
+    wheelStop: 0.15,
+    rider: { center: [0, 0.95, -0.25], size: [0.42, 0.75, 0.36] },
+  },
+  engineSlots: null,
   eyeLocal: [0, 1.22, -0.2],
+  maxDismountSpeed: 2.5,
+};
+
+/**
+ * Supermotard 50 à boîte 6 (style « SM 50 » des années 2020) : grandes
+ * roues de 17", suspensions à long débattement, selle haute, freins à
+ * disque, moteur 2T à boîte manuelle bridé à 45 km/h par le CDI.
+ */
+export const SM50: BikeSpec = {
+  id: 'sm50',
+  label: 'Supermotard 50',
+  style: 'supermotard',
+  mass: 98,
+  riderMass: 75,
+  wheelBase: 1.38,
+  wheelRadius: 0.307,
+  mountHeight: 0.33,
+  suspension: { restLength: 0.33, travel: 0.16, stiffness: 19000, damping: 1700 },
+  centerOfMass: { withRider: [0, 0.47, -0.06], alone: [0, 0.22, 0] },
+  inertiaPerKg: [0.4, 0.32, 0.12],
+  steer: { atRest: 0.6, atSpeed: 0.045, referenceSpeed: 14, rate: 2.6 },
+  grip: 1.05,
+  // Freins à disque : nettement plus mordants que des tambours.
+  brake: { front: 720, rear: 460 },
+  lean: { max: 0.8, frequency: 7.5, dampingRatio: 0.9, onStand: -0.12 },
+  cdA: 0.55,
+  rollingResistance: 0.015,
+  powertrain: { kind: 'manual', spec: SM50_DRIVETRAIN },
+  collider: {
+    frame: { center: [0, 0.42, -0.06], size: [0.34, 0.6, 1.3] },
+    wheelStop: 0.17,
+    rider: { center: [0, 1.08, -0.22], size: [0.42, 0.78, 0.36] },
+  },
+  engineSlots: SM50_SLOTS,
+  eyeLocal: [0, 1.38, -0.18],
   maxDismountSpeed: 2.5,
 };

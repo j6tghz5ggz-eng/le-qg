@@ -9,6 +9,7 @@
 import type { Engine } from '@babylonjs/core/Engines/engine';
 import { Scene } from '@babylonjs/core/scene';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { AudioManager } from '../core/audio/AudioManager';
 import { createEngine } from '../core/engine/createEngine';
 import { EventBus } from '../core/events/EventBus';
 import { InputManager } from '../core/input/InputManager';
@@ -28,8 +29,9 @@ import { t } from '../ui/i18n';
 import { showFatalError } from '../ui/screens/ErrorScreen';
 import { LoadingScreen } from '../ui/screens/LoadingScreen';
 import { showToast } from '../ui/screens/Toast';
-import { BIKE_SPAWN, PLAYER_SPAWN, TestWorld } from '../world/TestWorld';
-import { CYCLO } from '../vehicles/bike/specs';
+import { BIKE_SPAWN, PLAYER_SPAWN, SPARE_PART_SPOTS, TestWorld } from '../world/TestWorld';
+import { MechanicsSystem } from '../mechanics/MechanicsSystem';
+import { SM50 } from '../vehicles/bike/specs';
 import { VehicleSystem } from '../vehicles/VehicleSystem';
 import { VehicleHud } from '../ui/hud/VehicleHud';
 import type { GameEvents, GameState } from './events';
@@ -77,6 +79,7 @@ export class Game {
       const physics = await initPhysics(scene);
 
       const input = new InputManager(this.canvas, platform, this.bus);
+      const audio = new AudioManager();
       const ctx: GameContext = {
         engine,
         scene,
@@ -85,6 +88,7 @@ export class Game {
         platform,
         quality,
         input,
+        audio,
         interactables: new InteractableRegistry(),
         uiRoot: this.uiRoot,
       };
@@ -94,13 +98,21 @@ export class Game {
       const player = new PlayerController(PLAYER_SPAWN.position, PLAYER_SPAWN.yaw, PLAYER_SPAWN.pitch);
       const interaction = new InteractionSystem(player);
       const vehicles = new VehicleSystem(player, { addShadowCaster: (m) => world.environment.addShadowCaster(m) }, [
-        { spec: CYCLO, position: BIKE_SPAWN.position, yaw: BIKE_SPAWN.yaw },
+        { spec: SM50, position: BIKE_SPAWN.position, yaw: BIKE_SPAWN.yaw },
       ]);
-      // Ordre important : le monde, le joueur (caméra), les véhicules, puis
-      // l'interaction (rayon depuis la caméra, désactivée en conduite).
+      const shadows = { addShadowCaster: (m: Parameters<typeof world.environment.addShadowCaster>[0]) => world.environment.addShadowCaster(m) };
+      const mechanics = new MechanicsSystem(vehicles, interaction, player, shadows, [
+        { defId: 'cdi-free', condition: 1, position: SPARE_PART_SPOTS[0] },
+        { defId: 'plug-std', condition: 1, position: SPARE_PART_SPOTS[1] },
+        { defId: 'exhaust-racing', condition: 1, position: SPARE_PART_SPOTS[2] },
+      ]);
+      // Ordre important : le monde, le joueur (caméra), les véhicules, la
+      // mécanique (fantôme de remontage), puis l'interaction (rayon depuis
+      // la caméra, désactivée en conduite).
       await this.addSystem(world, ctx);
       await this.addSystem(player, ctx);
       await this.addSystem(vehicles, ctx);
+      await this.addSystem(mechanics, ctx);
       await this.addSystem(interaction, ctx);
 
       new Hud(this.uiRoot, this.bus, input.scheme);
@@ -131,12 +143,20 @@ export class Game {
           if (bike) {
             const d = bike.telemetry();
             lines.push(
-              `Moto        ${d.speedKmh.toFixed(1)} km/h · ${Math.round(d.rpm)} tr/min · roues au sol ${d.wheelsOnGround}`,
-              `            gaz ${d.throttle.toFixed(2)} · frein ${d.brake.toFixed(2)} · guidon ${d.steerDeg.toFixed(1)}° · angle ${d.leanDeg.toFixed(1)}°`,
+              `Moto        ${d.speedKmh.toFixed(1)} km/h · rapport ${d.gear} · ${Math.round(d.rpm)} tr/min · ${d.running ? 'moteur en marche' : 'moteur coupé'}`,
+              `            gaz ${d.throttle.toFixed(2)} · embrayage ${d.clutch.toFixed(2)} · frein ${d.brake.toFixed(2)} · guidon ${d.steerDeg.toFixed(1)}° · angle ${d.leanDeg.toFixed(1)}° · roues ${d.wheelsOnGround}`,
             );
           }
           return lines;
         },
+        [
+          {
+            label: t('vehicle.autoClutch'),
+            get: () => vehicles.autoClutchEnabled,
+            set: (on) => (vehicles.autoClutchEnabled = on),
+          },
+          { label: t('settings.sound'), get: () => audio.enabled, set: (on) => (audio.enabled = on) },
+        ],
       );
 
       loading.setProgress(0.85, t('loading.shaders'));
@@ -189,14 +209,31 @@ export class Game {
           const bike = vehicles.current;
           if (!bike) return null;
           const d = bike.telemetry();
-          return { speedKmh: d.speedKmh, rpm: d.rpm, heading: d.heading, lean: d.leanDeg, wheelsOnGround: d.wheelsOnGround };
+          return {
+            speedKmh: d.speedKmh,
+            rpm: d.rpm,
+            heading: d.heading,
+            lean: d.leanDeg,
+            wheelsOnGround: d.wheelsOnGround,
+            gear: d.gear,
+            running: d.running,
+          };
         },
+        get bikeParts() {
+          return mechanics.installedSlots();
+        },
+        slotPosition: (slot: string) => {
+          const p = mechanics.slotWorldPosition(slot);
+          return p ? { x: p.x, y: p.y, z: p.z } : null;
+        },
+        looseParts: () => mechanics.looseParts().map((l) => ({ name: l.name, x: l.position.x, y: l.position.y, z: l.position.z })),
+        lookAt: (x: number, y: number, z: number) => player.lookAt({ x, y, z }),
         get parkedBike() {
           const bike = vehicles.bikes[0];
           return bike ? { x: bike.position.x, y: bike.position.y, z: bike.position.z, lean: bike.leanAngle } : null;
         },
         probeY: () => world.probeY(),
-      }, { scene, engine, player, vehicles, interaction, world, input });
+      }, { scene, engine, player, vehicles, interaction, world, input, mechanics });
 
       this.loop.start();
       this.setState('playing');

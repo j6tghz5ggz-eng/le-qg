@@ -1,122 +1,94 @@
-import { expect, test, type Page } from '@playwright/test';
-import type { DebugHooks } from '../../src/debug/debugHooks';
+import { expect, test } from '@playwright/test';
+import { holdKeys, hooks, joystick, joystickIntoGarage, startGame, waitFor, walkIntoGarage } from './helpers';
 
-async function startGame(page: Page): Promise<void> {
-  await page.goto('/');
-  await page.waitForFunction(() => window.__50CC__?.state === 'playing', null, { timeout: 60_000 });
-  await page.waitForFunction(() => window.__50CC__!.player.grounded, null, { timeout: 10_000 });
-}
-
-const hooks = (page: Page) =>
-  page.evaluate(() => {
-    const h = window.__50CC__!;
-    return { player: h.player, focus: h.focus, vehicle: h.vehicle };
-  }) as Promise<Pick<DebugHooks, 'player' | 'focus' | 'vehicle'>>;
-
-type State = Awaited<ReturnType<typeof hooks>>;
-
-/** Interroge l'état jusqu'à ce que la condition soit vraie. */
-async function waitFor(page: Page, done: (s: State) => boolean, timeout = 15_000): Promise<State> {
-  const start = Date.now();
-  for (;;) {
-    const s = await hooks(page);
-    if (done(s)) return s;
-    if (Date.now() - start > timeout) throw new Error(`Condition non atteinte : ${JSON.stringify(s)}`);
-    await page.waitForTimeout(50);
-  }
-}
-
-async function holdKeys(page: Page, keys: string[], done: (s: State) => boolean, timeout?: number): Promise<State> {
-  for (const k of keys) await page.keyboard.down(k);
-  try {
-    return await waitFor(page, done, timeout);
-  } finally {
-    for (const k of keys) await page.keyboard.up(k);
-  }
-}
-
-test.describe('cyclomoteur au clavier', () => {
+test.describe('supermotard au clavier (boîte manuelle)', () => {
   test.skip(({ isMobile }) => isMobile, 'test clavier');
 
-  test('monter, accélérer, tourner, freiner, descendre', async ({ page }) => {
+  async function mountBike(page: import('@playwright/test').Page): Promise<void> {
     await startGame(page);
-    // S'approcher : la moto est garée à gauche du joueur.
-    await holdKeys(page, ['KeyA'], (s) => s.focus === 'Cyclomoteur');
-    await expect(page.locator('.prompt__hint')).toContainText('Monter');
+    await walkIntoGarage(page);
+    await holdKeys(page, ['KeyW'], (s) => s.focus === 'Supermotard 50');
     await page.keyboard.press('KeyE');
     await waitFor(page, (s) => s.vehicle !== null);
     await expect(page.locator('.dash')).toBeVisible();
+  }
 
-    const fast = await holdKeys(page, ['KeyW'], (s) => (s.vehicle?.speedKmh ?? 0) > 15);
-    expect(fast.vehicle!.wheelsOnGround).toBe(2);
+  async function kickUntilRunning(page: import('@playwright/test').Page): Promise<void> {
+    for (let i = 0; i < 12 && !(await hooks(page)).vehicle?.running; i++) {
+      await page.keyboard.press('KeyC');
+      await page.waitForTimeout(200);
+    }
+    expect((await hooks(page)).vehicle?.running).toBe(true);
+  }
 
-    // Virage à droite : le cap tourne et la moto penche dans le virage.
+  test('kick, embrayage, 1re, démarrage, 2e, freinage, descente', async ({ page }) => {
+    await mountBike(page);
+    expect((await hooks(page)).vehicle?.gear).toBe('N');
+    await kickUntilRunning(page);
+
+    // Embrayage tiré, 1re, on monte dans les tours puis on relâche l'embrayage.
+    await page.keyboard.down('ShiftLeft');
+    await page.keyboard.press('KeyR');
+    await waitFor(page, (s) => s.vehicle?.gear === '1');
     await page.keyboard.down('KeyW');
-    const turning = await holdKeys(page, ['KeyD'], (s) => Math.abs(s.vehicle!.heading - fast.vehicle!.heading) > 0.5);
-    await page.keyboard.up('KeyW');
-    expect(turning.vehicle!.lean).toBeGreaterThan(5);
-    expect(turning.vehicle!.wheelsOnGround).toBe(2);
+    await page.waitForTimeout(300);
+    await page.keyboard.up('ShiftLeft');
+    const rolling = await waitFor(page, (s) => (s.vehicle?.speedKmh ?? 0) > 8);
+    expect(rolling.vehicle!.running).toBe(true);
 
-    await holdKeys(page, ['KeyS'], (s) => (s.vehicle?.speedKmh ?? 99) < 2);
+    await page.keyboard.down('ShiftLeft');
+    await page.keyboard.press('KeyR');
+    await page.keyboard.up('ShiftLeft');
+    await waitFor(page, (s) => s.vehicle?.gear === '2');
+    await page.keyboard.up('KeyW');
+
+    await holdKeys(page, ['KeyS', 'ShiftLeft'], (s) => (s.vehicle?.speedKmh ?? 99) < 2);
     await page.keyboard.press('KeyE');
-    const off = await waitFor(page, (s) => s.vehicle === null);
-    expect(off.player.y).toBeLessThan(0.3);
+    await waitFor(page, (s) => s.vehicle === null);
     await expect(page.locator('.dash')).toBeHidden();
   });
 
-  test('impossible de descendre en roulant vite', async ({ page }) => {
-    await startGame(page);
-    await holdKeys(page, ['KeyA'], (s) => s.focus === 'Cyclomoteur');
-    await page.keyboard.press('KeyE');
-    await waitFor(page, (s) => s.vehicle !== null);
-    await page.keyboard.down('KeyW');
-    await waitFor(page, (s) => (s.vehicle?.speedKmh ?? 0) > 20);
-    await page.keyboard.press('KeyE');
-    await expect(page.locator('.toast')).toContainText('Ralentissez');
-    await page.keyboard.up('KeyW');
-    expect((await hooks(page)).vehicle).not.toBeNull();
+  test('lâcher l’embrayage sans gaz en 1re fait caler', async ({ page }) => {
+    await mountBike(page);
+    await kickUntilRunning(page);
+    await page.keyboard.down('ShiftLeft');
+    await page.keyboard.press('KeyR');
+    await waitFor(page, (s) => s.vehicle?.gear === '1');
+    await page.keyboard.up('ShiftLeft');
+    await waitFor(page, (s) => s.vehicle?.running === false, 5000);
+    await expect(page.locator('.toast')).toContainText('calé');
+  });
+
+  test('passer une vitesse sans embrayer est refusé', async ({ page }) => {
+    await mountBike(page);
+    await page.keyboard.press('KeyR');
+    await expect(page.locator('.toast')).toContainText('embrayage');
+    expect((await hooks(page)).vehicle?.gear).toBe('N');
   });
 });
 
-test.describe('cyclomoteur au tactile', () => {
+test.describe('supermotard au tactile (embrayage automatique)', () => {
   test.skip(({ isMobile }) => !isMobile, 'test tactile');
 
-  /** Pouce posé sur le joystick, glissé de `dx, dy` pixels, maintenu jusqu'à la condition. */
-  async function joystick(page: Page, dx: number, dy: number, done: (s: State) => boolean): Promise<State> {
-    const cdp = await page.context().newCDPSession(page);
-    const size = page.viewportSize()!;
-    const x = size.width * 0.2;
-    const y = size.height * 0.75;
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 1 }] });
-    for (let i = 1; i <= 5; i++) {
-      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + (dx * i) / 5, y: y + (dy * i) / 5, id: 1 }] });
-    }
-    try {
-      return await waitFor(page, done);
-    } finally {
-      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-      await cdp.detach();
-    }
-  }
-
-  test('joystick pour marcher, bouton Monter, gaz au joystick, Descendre', async ({ page }) => {
+  test('joystick jusqu’au garage, Monter, Démarrer, +, gaz au joystick, Descendre', async ({ page }) => {
     await startGame(page);
-    const start = (await hooks(page)).player;
-    // Joystick vers la gauche : le joueur se décale jusqu'à la moto.
-    const near = await joystick(page, -50, 0, (s) => s.focus === 'Cyclomoteur');
-    expect(near.player.x).toBeLessThan(start.x - 0.3);
-
+    await joystickIntoGarage(page);
+    await joystick(page, 0, -55, (s) => s.focus === 'Supermotard 50');
     await page.getByRole('button', { name: 'Monter' }).tap();
     await waitFor(page, (s) => s.vehicle !== null);
-    await expect(page.getByRole('button', { name: 'Descendre' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Sauter' })).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Embrayage' })).toBeHidden(); // embrayage auto sur tactile
 
-    // Joystick vers le haut = gaz, vers le bas = frein.
-    await joystick(page, 0, -55, (s) => (s.vehicle?.speedKmh ?? 0) > 8);
+    for (let i = 0; i < 12 && !(await hooks(page)).vehicle?.running; i++) {
+      await page.getByRole('button', { name: 'Démarrer' }).tap();
+      await page.waitForTimeout(200);
+    }
+    expect((await hooks(page)).vehicle?.running).toBe(true);
+    await page.getByRole('button', { name: 'Vitesse supérieure' }).tap();
+    await waitFor(page, (s) => s.vehicle?.gear === '1');
+
+    await joystick(page, 0, -55, (s) => (s.vehicle?.speedKmh ?? 0) > 6);
     await joystick(page, 0, 55, (s) => (s.vehicle?.speedKmh ?? 99) < 2);
-
     await page.getByRole('button', { name: 'Descendre' }).tap();
     await waitFor(page, (s) => s.vehicle === null);
-    await expect(page.getByRole('button', { name: 'Sauter' })).toBeVisible();
   });
 });

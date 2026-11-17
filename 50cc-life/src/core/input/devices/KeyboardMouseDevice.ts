@@ -8,18 +8,24 @@
  *   disparaît et ses mouvements tournent la caméra. Échap la libère.
  * - Si la capture est refusée (certaines fenêtres intégrées), repli :
  *   regarder en maintenant le clic droit.
+ * - Une touche peut servir à pied ET en moto (ex. Maj = courir / embrayage) :
+ *   c'est le contexte (marche ou conduite) qui lit l'une ou l'autre action.
+ * - En moto, la molette passe les vitesses.
  */
 import type { ActionState } from '../ActionState';
 import type { ButtonAction } from '../actions';
 
-const KEY_ACTIONS: Readonly<Record<string, ButtonAction>> = {
-  Space: 'jump',
-  ShiftLeft: 'sprint',
-  ShiftRight: 'sprint',
-  KeyC: 'crouch',
-  KeyE: 'use',
-  KeyF: 'throw',
+const KEY_ACTIONS: Readonly<Record<string, readonly ButtonAction[]>> = {
+  Space: ['jump', 'rearBrake'],
+  ShiftLeft: ['sprint', 'clutch'],
+  ShiftRight: ['sprint', 'clutch'],
+  KeyC: ['crouch', 'engine'],
+  KeyE: ['use'],
+  KeyF: ['throw', 'gearDown'],
+  KeyR: ['gearUp'],
 };
+/** Délai minimal entre deux crans de molette pris en compte (pavés tactiles très sensibles). */
+const WHEEL_COOLDOWN_MS = 150;
 
 const MOVE_KEYS = {
   forward: ['KeyW', 'ArrowUp'],
@@ -49,6 +55,7 @@ export class KeyboardMouseDevice {
   private buttons = 0;
   /** Ignore le clic qui a servi à capturer la souris. */
   private ignoreButtonsUntilRelease = false;
+  private lastWheel = 0;
   private readonly abort = new AbortController();
 
   constructor(
@@ -64,6 +71,7 @@ export class KeyboardMouseDevice {
     document.addEventListener('pointermove', this.onPointerMove, opts);
     document.addEventListener('pointerup', this.onPointerButtons, opts);
     canvas.addEventListener('contextmenu', (e) => e.preventDefault(), opts);
+    canvas.addEventListener('wheel', this.onWheel, { ...opts, passive: false });
     document.addEventListener('pointerlockchange', this.onLockChange, opts);
     document.addEventListener('pointerlockerror', () => (this._lockUnavailable = true), opts);
   }
@@ -144,8 +152,7 @@ export class KeyboardMouseDevice {
   };
 
   private sync(code: string, down: boolean): void {
-    const action = KEY_ACTIONS[code];
-    if (action) this.state.setButton(action, `kb:${code}`, down);
+    for (const action of KEY_ACTIONS[code] ?? []) this.state.setButton(action, `kb:${code}`, down);
     const held = (list: readonly string[]): number => (list.some((k) => this.keys.has(k)) ? 1 : 0);
     // Valeurs brutes : ActionState normalise la diagonale pour la marche
     // (getMove), mais pas pour la conduite (getMoveAxes).
@@ -187,6 +194,18 @@ export class KeyboardMouseDevice {
     const dy = clamp(event.movementY, MAX_MOUSE_DELTA);
     if (dx === 0 && dy === 0) return;
     this.state.addLook(dx * this.sensitivity, dy * this.sensitivity * (this.invertY ? -1 : 1));
+  };
+
+  /** Molette : un cran = un appui sur « vitesse + » ou « vitesse − ». */
+  private readonly onWheel = (event: WheelEvent): void => {
+    event.preventDefault();
+    const now = performance.now();
+    if (now - this.lastWheel < WHEEL_COOLDOWN_MS || event.deltaY === 0) return;
+    this.lastWheel = now;
+    const action: ButtonAction = event.deltaY < 0 ? 'gearUp' : 'gearDown';
+    this.state.setButton(action, 'mouse:wheel', true);
+    this.state.setButton(action, 'mouse:wheel', false);
+    this.callbacks.onActivity();
   };
 
   private readonly onLockChange = (): void => {

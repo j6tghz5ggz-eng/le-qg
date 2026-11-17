@@ -611,3 +611,111 @@ kbd {
     width: 170px;
   }
 }
+
+/* ---------- Tableau de bord : rapport et état moteur ---------- */
+.dash__main {
+  gap: 14px;
+}
+
+.dash__speed-block {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.dash__gear {
+  min-width: 1.6em;
+  padding: 2px 8px;
+  border-radius: 8px;
+  border: 2px solid var(--ui-accent);
+  color: var(--ui-accent);
+  font-size: 1.9rem;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+}
+
+.dash__gear.is-neutral {
+  border-color: var(--ok, #34d399);
+  color: var(--ok, #34d399);
+}
+
+.dash__status.is-off {
+  color: var(--ui-danger);
+  font-weight: 700;
+}
+
+/* ---------- Commandes tactiles de conduite ---------- */
+.touch-ride {
+  position: absolute;
+  right: calc(16px + var(--safe-right));
+  bottom: calc(110px + var(--safe-bottom));
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  grid-template-areas:
+    'engine clutch'
+    'down up';
+  gap: 12px;
+}
+
+.touch-btn--engine {
+  grid-area: engine;
+}
+
+.touch-btn--engine.is-attention {
+  border-color: var(--ui-accent);
+  background: rgba(255, 176, 32, 0.3);
+}
+
+.touch-btn--clutch {
+  grid-area: clutch;
+}
+
+.touch-btn--gear-up,
+.touch-btn--gear-down {
+  font-size: 1.6rem;
+  font-weight: 800;
+}
+
+.touch-btn--gear-up {
+  grid-area: up;
+}
+
+.touch-btn--gear-down {
+  grid-area: down;
+}
+
+/* ---------- Panneau de débogage : réglages ---------- */
+.debug__toggles {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.debug__toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+}
+
+/* ---------- Action à maintenir (dévisser…) ---------- */
+.hold-ring {
+  --p: 0;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border-radius: 50%;
+  background: conic-gradient(var(--ui-accent) calc(var(--p) * 1turn), rgba(255, 255, 255, 0.18) 0);
+  -webkit-mask: radial-gradient(circle, transparent 12px, #000 13px);
+  mask: radial-gradient(circle, transparent 12px, #000 13px);
+}
+
+.touch-btn--use.is-hold {
+  --p: 0;
+  background: linear-gradient(to top, rgba(255, 176, 32, 0.75) calc(var(--p) * 100%), rgba(14, 16, 19, 0.55) 0);
+}

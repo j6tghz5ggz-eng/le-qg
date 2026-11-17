@@ -13,6 +13,7 @@ type HintPart = string | { key: string };
 
 export class Hud {
   private readonly crosshair: HTMLElement;
+  private readonly ring: HTMLElement;
   private readonly label: HTMLElement;
   private readonly hint: HTMLElement;
   private focus: InteractionFocus = NO_FOCUS;
@@ -23,10 +24,11 @@ export class Hud {
     private scheme: InputScheme,
   ) {
     this.crosshair = el('div', { className: 'crosshair', attrs: { 'aria-hidden': 'true' } });
+    this.ring = el('div', { className: 'hold-ring', attrs: { 'aria-hidden': 'true' } });
     this.label = el('div', { className: 'prompt__label' });
     this.hint = el('div', { className: 'prompt__hint' });
     const prompt = el('div', { className: 'prompt', attrs: { 'aria-live': 'polite' } }, [this.label, this.hint]);
-    uiRoot.appendChild(el('div', { className: 'ui-layer hud' }, [this.crosshair, prompt]));
+    uiRoot.appendChild(el('div', { className: 'ui-layer hud' }, [this.ring, this.crosshair, prompt]));
     bus.on('interaction:focus', (focus) => {
       this.focus = focus;
       this.render();
@@ -45,6 +47,8 @@ export class Hud {
     const f = this.focus;
     this.crosshair.classList.toggle('is-active', f.canGrab || f.useLabel !== null);
     this.crosshair.classList.toggle('is-holding', f.holding);
+    this.ring.hidden = f.progress <= 0;
+    this.ring.style.setProperty('--p', String(f.progress));
     this.label.textContent = f.label ?? '';
     this.hint.replaceChildren(...this.hintParts().map(renderPart));
   }
@@ -53,10 +57,17 @@ export class Hud {
     const f = this.focus;
     if (!f.label) return [];
     if (f.tooHeavy) return [t('interact.tooHeavy')];
-    if (this.scheme === 'touch') return []; // les boutons tactiles affichent déjà les actions
+    // Tactile : les boutons affichent déjà les actions ; on garde la précision.
+    if (this.scheme === 'touch') return f.detail ? [f.detail] : [];
     const pad = this.scheme === 'gamepad';
+    const useKey: HintPart = { key: pad ? 'Y' : 'E' };
+    const useParts: HintPart[] = f.useLabel
+      ? [...(f.hold ? [`${t('interact.holdKey')} `] : []), useKey, ` ${f.useLabel}`, ...(f.detail ? [` (${f.detail})`] : [])]
+      : [];
     if (f.holding) {
       return [
+        ...useParts,
+        ...(useParts.length ? ['\n'] : []),
         pad ? t('interact.releaseX') : t('interact.releaseClick'),
         ` : ${t('interact.drop')}   `,
         { key: pad ? 'RB' : t('keys.rightClick') },
@@ -65,9 +76,9 @@ export class Hud {
     }
     const parts: HintPart[] = [];
     if (f.canGrab) parts.push({ key: pad ? 'X' : t('keys.leftClick') }, ` ${t('interact.grab')}`);
-    if (f.useLabel) {
+    if (useParts.length) {
       if (parts.length) parts.push('   ');
-      parts.push({ key: pad ? 'Y' : 'E' }, ` ${f.useLabel}`);
+      parts.push(...useParts);
     }
     return parts;
   }

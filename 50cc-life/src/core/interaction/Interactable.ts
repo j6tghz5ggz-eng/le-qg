@@ -5,7 +5,23 @@
  * touche ce corps, le jeu sait de quoi il s'agit (nom, actions possibles).
  * Les futures pièces de moto passeront par le même registre.
  */
+import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
 import type { PhysicsBody } from '@babylonjs/core/Physics/v2/physicsBody';
+
+/**
+ * Action « à maintenir » (ex. dévisser une pièce) : la touche Utiliser
+ * doit rester enfoncée pendant `seconds`.
+ */
+export interface HoldAction {
+  /** Verbe affiché (« Démonter », « Remonter »…). */
+  readonly label: string;
+  /** Précision affichée (« 4 fixations »…). */
+  readonly detail?: string;
+  readonly seconds: number;
+  /** Raison qui empêche l'action (null = possible). Vérifiée au début. */
+  blocker(): string | null;
+  complete(): void;
+}
 
 export interface Interactable {
   /** Nom affiché sous le réticule (ex. « Caisse à outils »). */
@@ -15,6 +31,10 @@ export interface Interactable {
   /** Libellé de l'action « Utiliser » (touche E). */
   readonly useLabel?: string;
   use?(): void;
+  /** Action à maintenir (démonter une pièce…). */
+  readonly hold?: HoldAction;
+  /** Pour un objet porté : action possible avec lui (ex. le remonter sur la moto). */
+  installTarget?(): HoldAction | null;
 }
 
 export interface Proximity {
@@ -26,6 +46,7 @@ export interface Proximity {
 export class InteractableRegistry {
   private readonly items = new Map<PhysicsBody, Interactable>();
   private readonly proximity = new Map<PhysicsBody, Proximity>();
+  private readonly meshes = new Map<AbstractMesh, { item: Interactable; owner: PhysicsBody | null }>();
 
   /** Enregistre un objet. Retourne la fonction de désinscription. */
   register(body: PhysicsBody, item: Interactable): () => void {
@@ -44,6 +65,25 @@ export class InteractableRegistry {
    */
   setProximity(body: PhysicsBody, proximity: Proximity): void {
     this.proximity.set(body, proximity);
+  }
+
+  /**
+   * Cible visée par son modèle 3D plutôt que par la physique (ex. une pièce
+   * montée sur la moto, qui fait partie du corps physique de la moto).
+   */
+  registerMesh(mesh: AbstractMesh, item: Interactable, owner: PhysicsBody | null = null): () => void {
+    // `owner` : corps physique qui contient la pièce (la moto). Si le rayon
+    // physique touche ce corps, la pièce visée est prioritaire.
+    this.meshes.set(mesh, { item, owner });
+    return () => this.unregisterMesh(mesh);
+  }
+
+  unregisterMesh(mesh: AbstractMesh): void {
+    this.meshes.delete(mesh);
+  }
+
+  meshTargets(): IterableIterator<[AbstractMesh, { item: Interactable; owner: PhysicsBody | null }]> {
+    return this.meshes.entries();
   }
 
   /** Objets « de proximité » enregistrés. */

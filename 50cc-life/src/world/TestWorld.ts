@@ -6,15 +6,19 @@
  * - un établi avec une caisse à outils à prendre, juste devant le départ ;
  * - une rampe (pente), une pyramide de caisses à pousser ou à porter.
  */
+import { PointLight } from '@babylonjs/core/Lights/pointLight';
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
-import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
+import { PhysicsBody } from '@babylonjs/core/Physics/v2/physicsBody';
+import { PhysicsShapeBox } from '@babylonjs/core/Physics/v2/physicsShape';
 import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder';
 import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder';
 import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
-import { PhysicsShapeType } from '@babylonjs/core/Physics/v2/IPhysicsEnginePlugin';
+import { PhysicsMotionType, PhysicsShapeType } from '@babylonjs/core/Physics/v2/IPhysicsEnginePlugin';
 import { PhysicsAggregate } from '@babylonjs/core/Physics/v2/physicsAggregate';
 import type { Scene } from '@babylonjs/core/scene';
 import type { GameContext, GameSystem } from '../app/GameContext';
@@ -30,8 +34,19 @@ const MAX_CRATES = 60;
 /** Point de départ du joueur : face à l'établi, regard légèrement baissé. */
 export const PLAYER_SPAWN = { position: new Vector3(0, 0, -6), yaw: 0, pitch: 0.3 } as const;
 
-/** Le cyclomoteur, garé à gauche du joueur, tourné vers la route d'essai (vers -x). */
-export const BIKE_SPAWN = { position: new Vector3(-2.8, 0, -5.2), yaw: -Math.PI / 2 } as const;
+/** Le supermotard, garé dans le garage (sur la dalle), face à la porte. */
+export const BIKE_SPAWN = { position: new Vector3(0.95, 0.15, 12.4), yaw: Math.PI } as const;
+
+/** Garage : centre, porte (largeur 3,4 m) côté -z. */
+export const GARAGE = { x: 0, z: 12, doorWidth: 3.4, height: 2.9 } as const;
+
+/** Emplacements des pièces de rechange posées sur l'établi du garage. */
+export const SPARE_PART_SPOTS = [
+  new Vector3(-3.42, 1.2, 10.95),
+  new Vector3(-3.42, 1.2, 11.5),
+  // Le pot (1 m de long) s'étend vers -z depuis son point d'ancrage.
+  new Vector3(-3.42, 1.45, 13.3),
+] as const;
 
 /** Route d'essai : axe x, de z = -20 à z = 180. */
 const ROAD = { x: -14, width: 7, zStart: -20, zEnd: 180 } as const;
@@ -126,7 +141,14 @@ export class TestWorld implements GameSystem {
     ground.material = mat;
     ground.receiveShadows = true;
     ground.freezeWorldMatrix(); // objet statique : Babylon ne recalcule plus sa matrice
-    new PhysicsAggregate(ground, PhysicsShapeType.BOX, { mass: 0, friction: 0.9 }, this.scene);
+    // Collision : un bloc épais (1 m) sous le sol plutôt qu'un plan sans
+    // épaisseur, que les petits objets rapides pourraient traverser.
+    // (Volume physique seul, sans modèle 3D.)
+    const collider = new TransformNode('ground-collider', this.scene);
+    collider.position.y = -0.5;
+    const body = new PhysicsBody(collider, PhysicsMotionType.STATIC, false, this.scene);
+    body.shape = new PhysicsShapeBox(Vector3.Zero(), Quaternion.Identity(), new Vector3(GROUND_SIZE, 1, GROUND_SIZE), this.scene);
+    body.shape.material = { friction: 0.9, restitution: 0 };
   }
 
   private createRamp(): void {
@@ -139,26 +161,62 @@ export class TestWorld implements GameSystem {
     });
   }
 
-  /** Garage 8 × 6 m, hauteur 2,9 m, porte de 3 m, dalle surélevée de 15 cm. */
+  /** Garage 8 × 6 m, hauteur 2,9 m, porte de 3,4 m, dalle surélevée de 15 cm. */
   private createGarage(): void {
-    const { concrete, darkConcrete } = this.materials;
-    const cx = 0;
-    const cz = 12;
-    const h = 2.9;
+    const { concrete, darkConcrete, wood } = this.materials;
+    const cx = GARAGE.x;
+    const cz = GARAGE.z;
+    const h = GARAGE.height;
     const wall = 0.2;
+    const door = GARAGE.doorWidth;
+    const side = (8 - door) / 2; // largeur de chaque pan de façade
     const specs: BoxSpec[] = [
       { name: 'garage-slab', size: [8, 0.15, 6], position: [cx, 0.075, cz], material: darkConcrete },
       { name: 'garage-back', size: [8, h, wall], position: [cx, h / 2, cz + 3 - wall / 2], material: concrete },
       { name: 'garage-left', size: [wall, h, 6], position: [cx - 4 + wall / 2, h / 2, cz], material: concrete },
       { name: 'garage-right', size: [wall, h, 6], position: [cx + 4 - wall / 2, h / 2, cz], material: concrete },
-      { name: 'garage-front-l', size: [2.5, h, wall], position: [cx - 2.75, h / 2, cz - 3 + wall / 2], material: concrete },
-      { name: 'garage-front-r', size: [2.5, h, wall], position: [cx + 2.75, h / 2, cz - 3 + wall / 2], material: concrete },
-      { name: 'garage-lintel', size: [3, 0.6, wall], position: [cx, h - 0.3, cz - 3 + wall / 2], material: concrete },
+      { name: 'garage-front-l', size: [side, h, wall], position: [cx - 4 + side / 2, h / 2, cz - 3 + wall / 2], material: concrete },
+      { name: 'garage-front-r', size: [side, h, wall], position: [cx + 4 - side / 2, h / 2, cz - 3 + wall / 2], material: concrete },
+      { name: 'garage-lintel', size: [door, 0.6, wall], position: [cx, h - 0.3, cz - 3 + wall / 2], material: concrete },
       { name: 'garage-roof', size: [8.4, 0.15, 6.4], position: [cx, h + 0.075, cz], material: darkConcrete },
-      // Étagère basse au fond : pour tester l'accroupissement (passage de 1,3 m).
-      { name: 'garage-shelf', size: [2.4, 0.08, 1.2], position: [cx + 2.4, 1.3, cz + 1.8], material: this.materials.wood },
+      // Étagère basse au fond à droite : passage de 1,3 m (accroupi).
+      { name: 'garage-shelf', size: [1.8, 0.08, 1.0], position: [cx + 2.9, 1.3, cz + 1.9], material: wood },
+      // Établi le long du mur gauche (pièces de rechange posées dessus).
+      { name: 'garage-bench', size: [0.7, 0.86, 2.6], position: [cx - 3.45, 0.15 + 0.43, cz], material: wood },
+      { name: 'garage-bench-top', size: [0.8, 0.05, 2.7], position: [cx - 3.42, 0.15 + 0.885, cz], material: darkConcrete },
     ];
     for (const spec of specs) this.staticBox(spec);
+    this.createGarageLight();
+  }
+
+  /** Plafonnier (point lumineux) et interrupteur à côté de la porte. */
+  private createGarageLight(): void {
+    const light = new PointLight('garage-light', new Vector3(GARAGE.x, GARAGE.height - 0.25, GARAGE.z), this.scene);
+    light.intensity = 14;
+    light.range = 10;
+    light.diffuse = new Color3(1, 0.93, 0.8);
+    const fixture = CreateBox('garage-lamp', { width: 1.2, height: 0.05, depth: 0.12 }, this.scene);
+    fixture.position.set(GARAGE.x, GARAGE.height - 0.05, GARAGE.z);
+    const glow = new PBRMaterial('lamp-glow', this.scene);
+    glow.albedoColor = new Color3(1, 1, 1);
+    glow.emissiveColor = new Color3(1, 0.95, 0.85);
+    fixture.material = glow;
+
+    const sw = CreateBox('garage-switch', { width: 0.09, height: 0.13, depth: 0.03 }, this.scene);
+    sw.position.set(GARAGE.x - GARAGE.doorWidth / 2 - 0.3, 1.35, GARAGE.z - 3 + 0.22);
+    sw.material = pbr(this.scene, 'switch', new Color3(0.85, 0.84, 0.8), 0.5);
+    const body = new PhysicsAggregate(sw, PhysicsShapeType.BOX, { mass: 0 }, this.scene);
+    let on = true;
+    this.register(body, {
+      label: t('object.lightSwitch'),
+      useLabel: t('object.lightOff'),
+      use: () => {
+        on = !on;
+        // Intensité à 0 plutôt que désactiver la lampe : pas de recompilation des shaders.
+        light.intensity = on ? 14 : 0;
+        glow.emissiveColor = on ? new Color3(1, 0.95, 0.85) : new Color3(0.05, 0.05, 0.05);
+      },
+    });
   }
 
   /** Établi à tiroirs (0,92 m) et caisse à outils posée dessus. */

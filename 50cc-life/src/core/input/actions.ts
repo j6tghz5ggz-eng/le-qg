@@ -6,7 +6,21 @@
  * tactile, manette) traduit ses entrées en actions. Ajouter un appareil
  * ou changer une touche ne touche donc jamais au code du gameplay.
  */
-export const BUTTON_ACTIONS = ['jump', 'sprint', 'crouch', 'grab', 'throw', 'use'] as const;
+export const BUTTON_ACTIONS = [
+  // À pied
+  'jump',
+  'sprint',
+  'crouch',
+  'grab',
+  'throw',
+  'use',
+  // En moto (beaucoup partagent une touche avec la marche, selon le contexte)
+  'clutch',
+  'gearUp',
+  'gearDown',
+  'engine',
+  'rearBrake',
+] as const;
 export type ButtonAction = (typeof BUTTON_ACTIONS)[number];
 
 /** Commandes analogiques (0 à 1), ex. gâchettes de manette. */

@@ -64,7 +64,7 @@ test.describe('joueur sur PC', () => {
     // Contourne l'établi par la droite, avance, revient face à la porte, entre.
     await holdUntil(page, 'KeyD', (p) => p.x > 2.3);
     await holdUntil(page, 'KeyW', (p) => p.z > 6.5);
-    await holdUntil(page, 'KeyA', (p) => p.x < 0.3);
+    await holdUntil(page, 'KeyA', (p) => p.x < -0.5); // à gauche du supermotard garé
     const inside = await holdUntil(page, 'KeyW', (p) => p.z > 10);
     expect(inside.y).toBeGreaterThan(0.12); // debout sur la dalle (0,15 m)
     expect(inside.y).toBeLessThan(0.25); // sans flotter au-dessus

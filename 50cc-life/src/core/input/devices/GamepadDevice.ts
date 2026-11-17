@@ -1,22 +1,25 @@
 /**
  * Manette (API Gamepad, disposition « standard » : Xbox, PlayStation…).
  *
- * Stick gauche : se déplacer · stick droit : regarder · A : sauter ·
- * B : s'accroupir · X : prendre · Y : utiliser (monter / descendre) ·
- * RB : lancer · clic du stick gauche : courir.
- * En moto : gâchette droite = gaz, gâchette gauche = frein.
+ * À pied : stick gauche se déplacer · stick droit regarder · A sauter ·
+ * B s'accroupir · X prendre · Y utiliser (monter / descendre) · RB lancer ·
+ * clic du stick gauche courir.
+ * En moto : gâchette droite gaz · gâchette gauche frein · stick gauche
+ * guidon · A frein arrière · B embrayage · X moteur (kick) · RB / LB
+ * vitesse + / − · Y descendre.
  */
 import type { ActionState } from '../ActionState';
 import type { ButtonAction } from '../actions';
 import { radialDeadZone, responseCurve } from '../stick';
 
-const BUTTON_MAP: ReadonlyArray<readonly [number, ButtonAction]> = [
-  [0, 'jump'],
-  [1, 'crouch'],
-  [2, 'grab'],
-  [3, 'use'],
-  [5, 'throw'],
-  [10, 'sprint'],
+const BUTTON_MAP: ReadonlyArray<readonly [number, readonly ButtonAction[]]> = [
+  [0, ['jump', 'rearBrake']],
+  [1, ['crouch', 'clutch']],
+  [2, ['grab', 'engine']],
+  [3, ['use']],
+  [4, ['gearDown']],
+  [5, ['throw', 'gearUp']],
+  [10, ['sprint']],
 ];
 const MOVE_DEAD_ZONE = 0.18;
 const LOOK_DEAD_ZONE = 0.15;
@@ -62,10 +65,10 @@ export class GamepadDevice {
     this.state.setAxis('brake', 'pad', brake > 0.05 ? brake : 0);
     if (throttle > 0.05 || brake > 0.05) active = true;
 
-    for (const [index, action] of BUTTON_MAP) {
+    for (const [index, actions] of BUTTON_MAP) {
       const pressed = pad.buttons[index]?.pressed ?? false;
       if (pressed) active = true;
-      this.state.setButton(action, `pad:${index}`, pressed);
+      for (const action of actions) this.state.setButton(action, `pad:${index}`, pressed);
     }
     if (active) this.onActivity();
   }

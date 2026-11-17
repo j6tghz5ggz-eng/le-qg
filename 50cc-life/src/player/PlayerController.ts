@@ -128,6 +128,17 @@ export class PlayerController implements GameSystem {
     return out.set(this.currFoot.x, this.currFoot.y + this.eyeHeight, this.currFoot.z);
   }
 
+  /** Tourne le regard vers un point du monde (outils de test et de débogage). */
+  lookAt(point: { x: number; y: number; z: number }): void {
+    if (this.seat) return;
+    const eye = this.getEyePosition(new Vector3());
+    const dx = point.x - eye.x;
+    const dy = point.y - eye.y;
+    const dz = point.z - eye.z;
+    this.yaw = Math.atan2(dx, dz);
+    this.pitch = clampPitch(-Math.atan2(dy, Math.hypot(dx, dz)));
+  }
+
   getForward(out: Vector3): Vector3 {
     lookDirection(this.yaw, this.pitch, out);
     return out;

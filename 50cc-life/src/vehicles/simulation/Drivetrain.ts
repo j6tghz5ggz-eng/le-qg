@@ -11,6 +11,8 @@
  * - le rapport long est limité (bridage) : à 45 km/h le moteur atteint le
  *   rupteur. Le débridage sera une amélioration mécanique !
  */
+import type { EngineStats, Powertrain, PowertrainInput, PowertrainOutput, ShiftResult, StartResult } from './Powertrain';
+
 export interface DrivetrainSpec {
   readonly idleRpm: number;
   /** L'embrayage commence à mordre. */
@@ -135,5 +137,64 @@ export class Drivetrain {
     let torque = this.rpm >= s.limiterRpm ? 0 : sampleCurve(s.torqueCurve, this.rpm) * gas;
     if (gas < 0.05) torque -= s.engineBrakeTorque * (this.rpm / s.limiterRpm);
     return (torque * this.clutch * this.ratio * s.efficiency) / s.wheelRadius;
+  }
+}
+
+/**
+ * Variateur automatique vu comme une chaîne de traction (pour les futurs
+ * scooters et mobylettes) : pas d'embrayage ni de vitesses à gérer.
+ */
+export class AutomaticPowertrain implements Powertrain {
+  readonly manual = false;
+  readonly gearLabel = 'Auto';
+  readonly loudness = 0.35;
+  private readonly drivetrain: Drivetrain;
+  private canRun = true;
+
+  constructor(spec: DrivetrainSpec) {
+    this.drivetrain = new Drivetrain(spec);
+  }
+
+  get rpm(): number {
+    return this.drivetrain.rpm;
+  }
+
+  get running(): boolean {
+    return this.drivetrain.running;
+  }
+
+  get limiterRpm(): number {
+    return this.drivetrain.spec.limiterRpm;
+  }
+
+  consumeStall(): boolean {
+    return false;
+  }
+
+  update(dt: number, input: PowertrainInput, wheelSpeed: number): PowertrainOutput {
+    return { force: this.drivetrain.update(dt, input.throttle, wheelSpeed), inertiaMass: 0 };
+  }
+
+  start(): StartResult {
+    if (!this.canRun) return { ok: false, reason: 'missing', missing: [] };
+    this.drivetrain.start();
+    return { ok: true };
+  }
+
+  stop(): void {
+    this.drivetrain.stop();
+  }
+
+  shiftUp(): ShiftResult {
+    return { ok: false, reason: 'limit' };
+  }
+
+  shiftDown(): ShiftResult {
+    return { ok: false, reason: 'limit' };
+  }
+
+  setEngineStats(stats: EngineStats): void {
+    this.canRun = stats.canRun;
+    if (!stats.canRun) this.drivetrain.stop();
   }
 }

@@ -7,6 +7,7 @@
 import type { Engine } from '@babylonjs/core/Engines/engine';
 import type { HavokPlugin } from '@babylonjs/core/Physics/v2/Plugins/havokPlugin';
 import type { Scene } from '@babylonjs/core/scene';
+import type { AudioManager } from '../core/audio/AudioManager';
 import type { EventBus } from '../core/events/EventBus';
 import type { InputManager } from '../core/input/InputManager';
 import type { InteractableRegistry } from '../core/interaction/Interactable';
@@ -22,6 +23,7 @@ export interface GameContext {
   readonly platform: PlatformInfo;
   readonly quality: QualityManager;
   readonly input: InputManager;
+  readonly audio: AudioManager;
   /** Objets avec lesquels le joueur peut interagir. */
   readonly interactables: InteractableRegistry;
   /** Conteneur HTML de l'interface (par-dessus le canvas). */

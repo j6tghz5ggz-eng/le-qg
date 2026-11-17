@@ -1,0 +1,203 @@
+import { describe, expect, it } from 'vitest';
+import { AutoClutch } from '../../src/vehicles/simulation/AutoClutch';
+import { ManualDrivetrain, SM50_DRIVETRAIN, clutchEngagement } from '../../src/vehicles/simulation/ManualDrivetrain';
+import type { EngineStats } from '../../src/vehicles/simulation/Powertrain';
+
+const DT = 1 / 60;
+const MASS = 98 + 75; // supermotard + pilote
+const CDA = 0.55;
+const ROLLING = 0.015;
+
+const RESTRICTED: EngineStats = { canRun: true, missing: [], powerFactor: 1, limiterRpm: 6500, startChance: 1, loudness: 0.4 };
+const FREE: EngineStats = { ...RESTRICTED, limiterRpm: 11500 };
+
+function running(stats = RESTRICTED): ManualDrivetrain {
+  const d = new ManualDrivetrain(SM50_DRIVETRAIN);
+  d.setEngineStats(stats);
+  expect(d.start(0, () => 0).ok).toBe(true);
+  return d;
+}
+
+/** Avance d'un pas en ligne droite (modèle 1D). */
+function step(d: ManualDrivetrain, v: number, throttle: number, clutch: number): number {
+  const out = d.update(DT, { throttle, clutch }, v);
+  const drive = (out.force * MASS) / (MASS + out.inertiaMass);
+  const resist = -0.5 * 1.2 * CDA * v * Math.abs(v) - (v > 0.05 ? ROLLING * MASS * 9.81 : 0);
+  return Math.max(0, v + ((drive + resist) / MASS) * DT);
+}
+
+/** Pilote virtuel : démarre en 1re et passe les vitesses au rupteur. */
+function fullThrottleRun(d: ManualDrivetrain, seconds: number) {
+  let v = 0;
+  let lever = 1;
+  let shiftTimer = 0;
+  d.shiftUp(1); // N → 1re
+  const speeds: number[] = [];
+  let stalled = false;
+  for (let i = 0; i < seconds / DT; i++) {
+    if (shiftTimer > 0) {
+      shiftTimer -= DT;
+      lever = 1;
+      if (shiftTimer <= 0) d.shiftUp(1);
+    } else {
+      lever = Math.max(0, lever - DT / 0.8); // relâche l'embrayage en 0,8 s
+      // Passe la vitesse au rupteur, ou vers le pic de puissance s'il est plus bas.
+      if (d.gear < 6 && d.locked && d.rpm > Math.min(d.limiterRpm - 250, 9800)) shiftTimer = 0.15;
+    }
+    v = step(d, v, 1, lever);
+    if (d.consumeStall()) stalled = true;
+    speeds.push(v);
+  }
+  return { speeds, stalled, top: Math.max(...speeds) * 3.6 };
+}
+
+describe('boîte 6 vitesses : embrayage, démarrage, calage', () => {
+  it('engagement : nul levier tiré, total levier relâché, progressif entre les deux', () => {
+    expect(clutchEngagement(1)).toBe(0);
+    expect(clutchEngagement(0)).toBe(1);
+    expect(clutchEngagement(0.55)).toBeGreaterThan(0.2);
+    expect(clutchEngagement(0.55)).toBeLessThan(0.8);
+  });
+
+  it('au point mort, le ralenti se stabilise vers 1 600 tr/min', () => {
+    const d = running();
+    for (let i = 0; i < 180; i++) d.update(DT, { throttle: 0, clutch: 0 }, 0);
+    expect(d.rpm).toBeGreaterThan(1400);
+    expect(d.rpm).toBeLessThan(1800);
+    expect(d.running).toBe(true);
+  });
+
+  it('kick : refusé en vitesse embrayage relâché, accepté au point mort ou embrayage tiré', () => {
+    const d = new ManualDrivetrain(SM50_DRIVETRAIN);
+    d.setEngineStats(RESTRICTED);
+    d.shiftUp(1); // 1re
+    expect(d.start(0, () => 0)).toEqual({ ok: false, reason: 'inGear' });
+    expect(d.start(1, () => 0).ok).toBe(true);
+  });
+
+  it('kick : peut échouer (bougie usée), impossible s’il manque une pièce', () => {
+    const d = new ManualDrivetrain(SM50_DRIVETRAIN);
+    d.setEngineStats({ ...RESTRICTED, startChance: 0.5 });
+    expect(d.start(0, () => 0.9)).toEqual({ ok: false, reason: 'failed' });
+    d.setEngineStats({ ...RESTRICTED, canRun: false, missing: ['Bougie'] });
+    expect(d.start(0, () => 0)).toEqual({ ok: false, reason: 'missing', missing: ['Bougie'] });
+  });
+
+  it('lâcher l’embrayage d’un coup au ralenti en 1re : le moteur cale', () => {
+    const d = running();
+    d.shiftUp(1);
+    let v = 0;
+    let stalled = false;
+    for (let i = 0; i < 90; i++) {
+      v = step(d, v, 0, 0);
+      if (d.consumeStall()) stalled = true;
+    }
+    expect(stalled).toBe(true);
+    expect(d.running).toBe(false);
+  });
+
+  it('démarrage en montant dans les tours et en relâchant doucement : pas de calage', () => {
+    const d = running();
+    d.shiftUp(1);
+    let v = 0;
+    for (let i = 0; i < 120; i++) v = step(d, v, 1, Math.max(0, 1 - (i * DT) / 0.8));
+    expect(d.running).toBe(true);
+    expect(v).toBeGreaterThan(3);
+  });
+
+  it('passages : embrayage obligatoire, ordre N - 1 - 2 - 3…', () => {
+    const d = running();
+    expect(d.shiftUp(0)).toEqual({ ok: false, reason: 'clutch' });
+    expect(d.shiftDown(1)).toEqual({ ok: false, reason: 'limit' });
+    expect(d.shiftUp(1)).toEqual({ ok: true, gear: '1' });
+    expect(d.shiftDown(1)).toEqual({ ok: true, gear: 'N' });
+    expect(d.shiftUp(1)).toEqual({ ok: true, gear: '1' });
+    expect(d.shiftUp(1)).toEqual({ ok: true, gear: '2' });
+    for (let i = 0; i < 4; i++) d.shiftUp(1);
+    expect(d.gearLabel).toBe('6');
+    expect(d.shiftUp(1)).toEqual({ ok: false, reason: 'limit' });
+  });
+});
+
+describe('performances (ligne droite simulée)', () => {
+  it('bridé (CDI 6 500 tr/min) : 45 km/h en 6e, sans caler', () => {
+    const run = fullThrottleRun(running(RESTRICTED), 40);
+    expect(run.stalled).toBe(false);
+    expect(run.top).toBeGreaterThan(42);
+    expect(run.top).toBeLessThan(46.5);
+  });
+
+  it('débridé (CDI 11 500 tr/min) : entre 70 et 85 km/h', () => {
+    const run = fullThrottleRun(running(FREE), 60);
+    expect(run.stalled).toBe(false);
+    expect(run.top).toBeGreaterThan(70);
+    expect(run.top).toBeLessThan(85);
+  });
+
+  it('le pot « course » (+15 %) fait gagner en accélération', () => {
+    const stock = fullThrottleRun(running(FREE), 8).speeds.at(-1)!;
+    const racing = fullThrottleRun(running({ ...FREE, powerFactor: 1.15 }), 8).speeds.at(-1)!;
+    expect(racing).toBeGreaterThan(stock);
+  });
+
+  it('frein moteur : gaz coupés en 3e à 25 km/h, force négative', () => {
+    const d = running();
+    d.shiftUp(1);
+    d.shiftUp(1);
+    d.shiftUp(1); // 3e
+    let force = 0;
+    for (let i = 0; i < 30; i++) force = d.update(DT, { throttle: 0, clutch: 0 }, 25 / 3.6).force;
+    expect(d.locked).toBe(true);
+    expect(force).toBeLessThan(0);
+  });
+
+  it('démarrage à la poussette : moteur coupé, en 2e, roue qui tourne, gaz ouverts', () => {
+    const d = new ManualDrivetrain(SM50_DRIVETRAIN);
+    d.setEngineStats(RESTRICTED);
+    d.shiftUp(1);
+    d.shiftUp(1); // 2e
+    for (let i = 0; i < 30; i++) d.update(DT, { throttle: 0.3, clutch: 0 }, 5);
+    expect(d.running).toBe(true);
+  });
+
+  it('l’inertie du moteur pèse plus en 1re qu’en 6e', () => {
+    const d = running();
+    d.shiftUp(1);
+    let first = 0;
+    for (let i = 0; i < 30; i++) first = d.update(DT, { throttle: 0.5, clutch: 0 }, 3).inertiaMass;
+    for (let i = 0; i < 5; i++) d.shiftUp(1);
+    let sixth = 0;
+    for (let i = 0; i < 30; i++) sixth = d.update(DT, { throttle: 0.5, clutch: 0 }, 11).inertiaMass;
+    expect(first).toBeGreaterThan(sixth * 5);
+  });
+});
+
+describe('embrayage automatique', () => {
+  it('démarre en 1re sans caler et accélère', () => {
+    const d = running();
+    d.shiftUp(1);
+    const auto = new AutoClutch();
+    let v = 0;
+    let stalled = false;
+    for (let i = 0; i < 240; i++) {
+      const wheelRpm = (v / SM50_DRIVETRAIN.wheelRadius) * d.ratio * (60 / (2 * Math.PI));
+      const lever = auto.update(DT, { rpm: d.rpm, gear: d.gear, throttle: 1, wheelRpm, running: d.running });
+      v = step(d, v, 1, lever);
+      if (d.consumeStall()) stalled = true;
+    }
+    expect(stalled).toBe(false);
+    expect(v * 3.6).toBeGreaterThan(10);
+  });
+
+  it('au ralenti en vitesse, débraye (pas de calage)', () => {
+    const d = running();
+    d.shiftUp(1);
+    const auto = new AutoClutch();
+    for (let i = 0; i < 180; i++) {
+      const lever = auto.update(DT, { rpm: d.rpm, gear: d.gear, throttle: 0, wheelRpm: 0, running: d.running });
+      d.update(DT, { throttle: 0, clutch: lever }, 0);
+    }
+    expect(d.running).toBe(true);
+    expect(auto.lever).toBeGreaterThan(0.9);
+  });
+});
