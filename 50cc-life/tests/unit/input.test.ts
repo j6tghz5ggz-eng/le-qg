@@ -32,6 +32,23 @@ describe('ActionState — boutons', () => {
     expect(state.consumePress('jump')).toBe(false);
   });
 
+  it('appareil qui rame : un appui reste valable pendant la première image qui suit', () => {
+    const c = clock();
+    const state = new ActionState(c.now);
+    state.setButton('gearUp', 'kb:KeyR', true);
+    state.setButton('gearUp', 'kb:KeyR', false);
+    c.advance(400); // image de 400 ms
+    state.beginFrame();
+    expect(state.consumePress('gearUp')).toBe(true);
+    // Un appui non lu pendant deux images (et vieux de plus de 200 ms) expire.
+    state.setButton('gearUp', 'kb:KeyR', true);
+    state.setButton('gearUp', 'kb:KeyR', false);
+    state.beginFrame();
+    state.beginFrame();
+    c.advance(400);
+    expect(state.consumePress('gearUp')).toBe(false);
+  });
+
   it('deux sources sur la même action : tenue tant qu’une la tient, un seul appui', () => {
     const state = new ActionState(clock().now);
     state.setButton('grab', 'mouse:left', true);

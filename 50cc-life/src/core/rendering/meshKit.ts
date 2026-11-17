@@ -152,6 +152,61 @@ export function plate(scene: Scene, name: string, outline: ReadonlyArray<readonl
   return mesh;
 }
 
+/**
+ * Plaque vue de face (masque de phare…) : contour [x, y] dans le plan
+ * z = `z`, légèrement galbée (`curve` : recul des bords) et inclinée (`tilt` :
+ * recul par mètre de hauteur). Texture lisible depuis l'avant.
+ */
+export function facePlate(scene: Scene, name: string, outline: ReadonlyArray<readonly [number, number]>, z: number, curve = 0, tilt = 0): Mesh {
+  const xs = outline.map((p) => p[0]);
+  const ys = outline.map((p) => p[1]);
+  const xMin = Math.min(...xs);
+  const xMax = Math.max(...xs);
+  const yMin = Math.min(...ys);
+  const yMax = Math.max(...ys);
+  const cx = xs.reduce((a, b) => a + b, 0) / xs.length;
+  const cy = ys.reduce((a, b) => a + b, 0) / ys.length;
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const push = (x: number, y: number): void => {
+    positions.push(x, y, z - curve * x * x - tilt * y);
+    // Vu de face, la droite du spectateur est vers -x.
+    uvs.push((xMax - x) / (xMax - xMin), (y - yMin) / (yMax - yMin));
+  };
+  push(cx, cy);
+  for (const [x, y] of outline) push(x, y);
+  const indices: number[] = [];
+  for (let i = 0; i < outline.length; i++) indices.push(0, 1 + i, 1 + ((i + 1) % outline.length));
+  const normals: number[] = [];
+  VertexData.ComputeNormals(positions, indices, normals);
+  const data = new VertexData();
+  data.positions = positions;
+  data.indices = indices;
+  data.normals = normals;
+  data.uvs = uvs;
+  const mesh = new Mesh(name, scene);
+  data.applyToMesh(mesh);
+  return mesh;
+}
+
+/**
+ * Disque de frein « pétale » (bord ondulé), dans le plan x = `x` : anneau
+ * entre `inner` et `outer`, `waves` ondulations de profondeur `depth`.
+ */
+export function waveDisc(scene: Scene, name: string, x: number, inner: number, outer: number, waves: number, depth: number): Mesh {
+  const steps = waves * 8;
+  const ringIn: Vector3[] = [];
+  const ringOut: Vector3[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const a = (i / steps) * Math.PI * 2;
+    const r = outer - depth * (0.5 + 0.5 * Math.cos(waves * a));
+    const ri = inner + depth * 0.4 * (0.5 + 0.5 * Math.cos(waves * a + Math.PI));
+    ringIn.push(new Vector3(x, ri * Math.cos(a), ri * Math.sin(a)));
+    ringOut.push(new Vector3(x, r * Math.cos(a), r * Math.sin(a)));
+  }
+  return CreateRibbon(name, { pathArray: [ringIn, ringOut], sideOrientation: Mesh.DOUBLESIDE }, scene);
+}
+
 /** Ressort hélicoïdal le long de y (de 0 à `length`). */
 export function coil(scene: Scene, name: string, radius: number, wire: number, length: number, turns: number): Mesh {
   const points: Vector3[] = [];

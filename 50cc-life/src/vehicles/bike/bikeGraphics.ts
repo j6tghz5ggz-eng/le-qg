@@ -102,21 +102,30 @@ export function panelMaterial(scene: Scene): PBRMaterial {
   );
 }
 
-/** Masque avant (plaque phare) : noir, logo jaune. */
+/** Masque avant : haut jaune, pointe noire en V, liseré blanc, logo. */
 export function maskMaterial(scene: Scene): PBRMaterial {
   return plastic(
     paintedMaterial(scene, 'sm-mask', 256, 256, (ctx, w, h) => {
-      ctx.fillStyle = BLACK;
-      ctx.fillRect(0, 0, w, h);
       ctx.fillStyle = YELLOW;
-      ctx.fillRect(0, h * 0.06, w, h * 0.05);
-      ctx.save();
-      // Le cylindre déroule la texture à l'envers : on la retourne.
-      ctx.translate(w, 0);
-      ctx.scale(-1, 1);
-      brandText(ctx, BRAND, w / 2, h * 0.2, 38, YELLOW);
-      ctx.restore();
-    }, 0.45),
+      ctx.fillRect(0, 0, w, h);
+      // Pointe noire en V qui descend vers le garde-boue.
+      ctx.fillStyle = BLACK;
+      ctx.beginPath();
+      ctx.moveTo(0, h * 0.5);
+      ctx.lineTo(w / 2, h * 0.62);
+      ctx.lineTo(w, h * 0.5);
+      ctx.lineTo(w, h);
+      ctx.lineTo(0, h);
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(0, h * 0.45);
+      ctx.lineTo(w / 2, h * 0.57);
+      ctx.lineTo(w, h * 0.45);
+      ctx.stroke();
+      brandText(ctx, BRAND, w / 2, h * 0.8, 40, YELLOW);
+    }, 0.32),
   );
 }
 

@@ -27,7 +27,7 @@ import type { Scene } from '@babylonjs/core/scene';
 import type { BikeVisual, WheelVisual } from './BikeVisual';
 import { licensePlateMaterial, maskMaterial, panelMaterial, radiatorMaterial, shroudMaterial } from './bikeGraphics';
 import type { BikeSpec } from './specs';
-import { MeshBin, between, block, box, coil, latheX, pipe, plate, rod, sweep, v3, type Surface } from '../../core/rendering/meshKit';
+import { MeshBin, between, block, box, coil, facePlate, latheX, pipe, plate, rod, sweep, v3, waveDisc, type Surface } from '../../core/rendering/meshKit';
 
 type Key =
   | 'paint'
@@ -78,7 +78,8 @@ function createPalette(scene: Scene): Record<Key, Surface> {
     paint: { shared: gloss, color: c(0.95, 0.68, 0.02) },
     white: { shared: gloss, color: c(0.9, 0.9, 0.88) },
     spring: { shared: gloss, color: c(0.78, 0.06, 0.04) },
-    frame: { shared: metal, color: c(0.32, 0.33, 0.35) },
+    // Cadre acier peint en noir brillant (style des 50 SM récentes).
+    frame: { shared: gloss, color: c(0.025, 0.025, 0.03) },
     alu: { shared: metal, color: c(0.8, 0.8, 0.82) },
     anodized: { shared: metal, color: c(0.06, 0.06, 0.07) },
     disc: { shared: metal, color: c(0.6, 0.6, 0.62) },
@@ -120,7 +121,8 @@ interface WheelOptions {
   readonly tireWidth: number;
   readonly rimWidth: number;
   readonly hubWidth: number;
-  readonly disc: { readonly x: number; readonly outer: number; readonly inner: number };
+  /** Disque « pétale » : plan x, rayons, nombre d'ondulations. */
+  readonly disc: { readonly x: number; readonly outer: number; readonly inner: number; readonly waves: number };
   readonly sprocket?: { readonly x: number; readonly radius: number; readonly teeth: number };
 }
 
@@ -200,23 +202,13 @@ function spokedWheel(scene: Scene, name: string, o: WheelOptions, bin: MeshBin<K
     spokes.push(rod(scene, `${name}-spoke`, from, to, 0.0038, 4));
   }
   bin.add('steel', ...spokes);
-  // Disque de frein et sa fixation.
+  // Disque « pétale » flottant : piste ondulée, rivets, étoile de fixation.
   const d = o.disc;
-  bin.add(
-    'disc',
-    latheX(
-      scene,
-      `${name}-disc`,
-      [
-        [d.inner, d.x - 0.0025],
-        [d.outer, d.x - 0.0025],
-        [d.outer, d.x + 0.0025],
-        [d.inner, d.x + 0.0025],
-      ],
-      32,
-      true,
-    ),
-  );
+  bin.add('disc', waveDisc(scene, `${name}-disc`, d.x, d.inner, d.outer, d.waves, 0.008));
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2;
+    bin.add('steel', rod(scene, `${name}-rivet`, v3(d.x - 0.004, (d.inner - 0.004) * Math.cos(a), (d.inner - 0.004) * Math.sin(a)), v3(d.x + 0.004, (d.inner - 0.004) * Math.cos(a), (d.inner - 0.004) * Math.sin(a)), 0.008, 6));
+  }
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2;
     const carrier = box(scene, `${name}-carrier`, v3(d.x, ((0.045 + d.inner) / 2) * Math.cos(a), ((0.045 + d.inner) / 2) * Math.sin(a)), 0.006, d.inner - 0.04, 0.014, a);
@@ -330,7 +322,19 @@ export function createSupermotardVisual(scene: Scene, spec: BikeSpec): BikeVisua
       (t) => [t < 0.4 ? 0.75 + t * 0.6 : 1 - (t - 0.4) * 0.3, t < 0.4 ? 0.9 + t * 0.25 : 1 - (t - 0.4) * 0.5],
     ),
   );
-  frame.add('plastic', rod(scene, 'fuel-cap', v3(0, 0.775, 0.3), v3(0, 0.795, 0.3), 0.06, 16));
+  frame.add('alu', rod(scene, 'fuel-cap', v3(0, 0.775, 0.3), v3(0, 0.792, 0.3), 0.058, 16));
+  frame.add('plastic', rod(scene, 'fuel-vent', v3(0, 0.792, 0.3), v3(0.03, 0.83, 0.26), 0.006, 6));
+
+  // Sabot moteur en alu (protège le bas moteur et le berceau).
+  frame.add('alu', block(scene, 'skid', v3(0, -0.105, 0.3), v3(0, -0.105, -0.09), 0.17, 0.008));
+  frame.add('alu', block(scene, 'skid-nose', v3(0, -0.1, 0.3), v3(0, 0.02, 0.36), 0.15, 0.008));
+  for (const s of sides) frame.add('alu', block(scene, 'skid-wing', v3(s * 0.088, -0.07, 0.26), v3(s * 0.088, -0.07, -0.06), 0.008, 0.07));
+
+  // Garde-boue intérieur (protège l'amortisseur des projections).
+  frame.add(
+    'plastic',
+    sweep(scene, 'inner-guard', [[-0.065, 0], [-0.065, 0.012], [0.065, 0.012], [0.065, 0]], [v3(0, 0.53, -0.37), v3(0, 0.44, -0.42), v3(0, 0.32, -0.45)]),
+  );
 
   // Selle longue et plate, qui remonte sur le réservoir.
   frame.add(
@@ -372,9 +376,11 @@ export function createSupermotardVisual(scene: Scene, spec: BikeSpec): BikeVisua
   for (const s of sides) {
     frame.add(
       'shroud',
-      plate(scene, 'shroud', [[0.22, 0.79], [0.36, 0.815], [0.5, 0.775], [0.545, 0.63], [0.47, 0.44], [0.34, 0.4], [0.24, 0.52]], s * 0.152, 0.08),
+      // Écopes anguleuses qui descendent en pointe devant le moteur.
+      plate(scene, 'shroud', [[0.22, 0.795], [0.37, 0.82], [0.53, 0.78], [0.565, 0.62], [0.52, 0.47], [0.43, 0.33], [0.36, 0.35], [0.25, 0.52]], s * 0.152, 0.08),
     );
-    frame.add('panel', plate(scene, 'panel', [[-0.17, 0.64], [-0.62, 0.66], [-0.6, 0.5], [-0.4, 0.42], [-0.19, 0.45]], s * 0.135, 0.05));
+    // Caches latéraux longs, qui filent jusqu'au garde-boue arrière.
+    frame.add('panel', plate(scene, 'panel', [[-0.15, 0.635], [-0.5, 0.66], [-0.76, 0.69], [-0.72, 0.6], [-0.52, 0.48], [-0.32, 0.41], [-0.17, 0.44]], s * 0.135, 0.05));
   }
 
   meshes.push(...frame.merge('bike-frame', root, m));
@@ -404,8 +410,8 @@ export function createSupermotardVisual(scene: Scene, spec: BikeSpec): BikeVisua
     arm.add('chain', block(scene, 'chain', a, b, 0.012, 0.008));
   }
   // Étrier arrière (à droite) et sa patte.
-  const rearCaliper = v3(0.068, hubRel.y - 0.08, hubRel.z + 0.06);
-  arm.add('caliper', box(scene, 'caliper-r', rearCaliper, 0.03, 0.045, 0.065, -0.65));
+  const rearCaliper = v3(0.062, hubRel.y - 0.051, hubRel.z + 0.068);
+  arm.add('caliper', box(scene, 'caliper-r', rearCaliper, 0.034, 0.07, 0.04, 0.64));
   arm.add('anodized', block(scene, 'caliper-r-mount', v3(0.09, hubRel.y, hubRel.z), rearCaliper.add(v3(0.01, 0, 0)), 0.012, 0.03));
   meshes.push(...arm.merge('bike-swingarm', swingNode, m));
 
@@ -453,13 +459,38 @@ export function createSupermotardVisual(scene: Scene, spec: BikeSpec): BikeVisua
   // Compteur, masque avant avec phare, clignotants.
   fork.add('plastic', box(scene, 'dash', v3(0, 0.12, 0.025), 0.095, 0.05, 0.04, -0.5));
   fork.add('glass', box(scene, 'dash-screen', v3(0, 0.137, 0.012), 0.07, 0.03, 0.004, -0.5));
-  const mask = arcShell(scene, 'mask', 0.15, 0.3, 0.32);
-  mask.rotation.y = -Math.PI / 2; // arc centré sur +z (vers l'avant)
-  mask.position.set(0, -0.06, 0.03);
-  fork.add('mask', mask);
-  fork.add('light', rod(scene, 'headlight', v3(0, -0.08, 0.168), v3(0, -0.08, 0.186), 0.11, 24));
-  fork.add('plastic', rod(scene, 'headlight-rim', v3(0, -0.08, 0.164), v3(0, -0.08, 0.18), 0.122, 24));
-  for (const s of sides) fork.add('amber', rod(scene, 'blinker-f', v3(s * 0.12, 0.04, 0.1), v3(s * 0.16, 0.04, 0.09), 0.022, 10, 0.015));
+  // Masque avant anguleux (galbé, incliné) avec deux optiques LED en biais et un feu de jour.
+  fork.add(
+    'mask',
+    facePlate(
+      scene,
+      'mask',
+      [[0, -0.27], [0.075, -0.2], [0.125, -0.06], [0.13, 0.06], [0.1, 0.14], [0.04, 0.17], [-0.04, 0.17], [-0.1, 0.14], [-0.13, 0.06], [-0.125, -0.06], [-0.075, -0.2]],
+      0.165,
+      1.6,
+      0.22,
+    ),
+  );
+  fork.add('plastic', box(scene, 'light-housing', v3(0, 0.03, 0.135), 0.16, 0.085, 0.05));
+  for (const s of sides) {
+    fork.add('light', box(scene, 'led', v3(s * 0.042, 0.022, 0.163), 0.062, 0.03, 0.012, 0, 0, s * 0.28));
+    fork.add('steel', box(scene, 'led-reflector', v3(s * 0.042, 0.022, 0.158), 0.07, 0.038, 0.006, 0, 0, s * 0.28));
+    fork.add('amber', rod(scene, 'blinker-f', v3(s * 0.125, 0.06, 0.13), v3(s * 0.165, 0.06, 0.12), 0.02, 10, 0.014));
+  }
+  fork.add('light', box(scene, 'drl', v3(0, 0.075, 0.162), 0.12, 0.007, 0.008));
+  // Protège-mains enveloppant les leviers (de la potence du levier au bout du guidon).
+  for (const s of sides) {
+    fork.add(
+      'white',
+      sweep(
+        scene,
+        'handguard',
+        [[-0.003, -0.03], [0.003, -0.03], [0.003, 0.034], [-0.003, 0.034]],
+        [bar(s * 0.235).addInPlace(v3(0, 0.015, 0.03)), v3(s * 0.31, 0.155, 0.075), v3(s * 0.4, 0.165, 0.055), bar(s * 0.43).addInPlace(v3(0, 0.005, 0.01))],
+        (t) => [1, 0.75 + 0.5 * Math.sin(t * Math.PI)],
+      ),
+    );
+  }
   meshes.push(...fork.merge('bike-fork', steer, m));
 
   // --- Partie mobile de la fourche : tubes plongeurs, pieds, étrier, garde-boue ---
@@ -477,10 +508,11 @@ export function createSupermotardVisual(scene: Scene, spec: BikeSpec): BikeVisua
     lower.add('plastic', block(scene, 'fork-guard', foot.add(up.scale(0.07)).addInPlace(v3(0, 0, 0.03)), foot.add(up.scale(0.3)).addInPlace(v3(0, 0, 0.03)), 0.05, 0.018));
   }
   lower.add('steel', rod(scene, 'axle-f', v3(-0.115, 0, 0), v3(0.115, 0, 0), 0.018, 8));
-  // Étrier radial (à gauche), à l'arrière du disque.
-  const frontCaliper = v3(-0.062, 0.078, -0.084);
-  lower.add('caliper', box(scene, 'caliper-f', frontCaliper, 0.036, 0.075, 0.045, -0.78));
-  lower.add('anodized', block(scene, 'caliper-f-mount', v3(-0.085, 0.02, 0.0), frontCaliper.add(v3(-0.012, 0, 0)), 0.012, 0.035));
+  // Étrier radial (à gauche), à cheval sur la piste du disque de 300 mm, derrière le tube.
+  const frontCaliper = v3(-0.058, 0.107, -0.075);
+  lower.add('caliper', box(scene, 'caliper-f', frontCaliper, 0.042, 0.095, 0.048, 0.96));
+  lower.add('anodized', block(scene, 'caliper-f-mount', v3(-0.085, 0.03, -0.01), frontCaliper.add(v3(-0.016, -0.02, 0.01)), 0.012, 0.04));
+  for (const k of [-1, 1]) lower.add('steel', rod(scene, 'caliper-f-bolt', frontCaliper.add(v3(-0.024, 0.035 * k * 0.57, 0.035 * k * 0.82)), frontCaliper.add(v3(-0.03, 0.035 * k * 0.57, 0.035 * k * 0.82)), 0.01, 6));
   // Garde-boue bas (supermotard), fixé aux protège-tubes.
   const fender = arcShell(scene, 'fender', 0.335, 0.12, 0.22);
   fender.rotation.z = Math.PI / 2;
@@ -490,7 +522,7 @@ export function createSupermotardVisual(scene: Scene, spec: BikeSpec): BikeVisua
   meshes.push(...lower.merge('bike-fork-lower', frontMount, m));
 
   const frontWheel = new MeshBin<Key>();
-  spokedWheel(scene, 'front', { tireRadius: spec.wheelRadius, tireWidth: 0.1, rimWidth: 0.075, hubWidth: 0.12, disc: { x: -0.058, outer: 0.13, inner: 0.085 } }, frontWheel);
+  spokedWheel(scene, 'front', { tireRadius: spec.wheelRadius, tireWidth: 0.1, rimWidth: 0.075, hubWidth: 0.12, disc: { x: -0.058, outer: 0.15, inner: 0.112, waves: 12 } }, frontWheel);
   meshes.push(...frontWheel.merge('bike-wheel-front', frontSpin, m));
   const front: WheelVisual = { mount: frontMount, spin: frontSpin, rest: hubLocal.clone(), axis: up.clone() };
 
@@ -509,7 +541,7 @@ export function createSupermotardVisual(scene: Scene, spec: BikeSpec): BikeVisua
       tireWidth: 0.13,
       rimWidth: 0.09,
       hubWidth: 0.14,
-      disc: { x: 0.062, outer: 0.105, inner: 0.068 },
+      disc: { x: 0.062, outer: 0.1, inner: 0.072, waves: 9 },
       sprocket: { x: -0.075, radius: crown, teeth: 46 },
     },
     rearWheel,

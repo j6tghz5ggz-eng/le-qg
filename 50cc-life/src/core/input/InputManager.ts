@@ -42,6 +42,7 @@ export class InputManager {
 
   /** À appeler une fois par image, avant la simulation. */
   poll(dt: number): void {
+    this.state.beginFrame();
     this.gamepad.poll(dt);
   }
 

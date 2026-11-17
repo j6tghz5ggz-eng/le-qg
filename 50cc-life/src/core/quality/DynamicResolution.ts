@@ -11,6 +11,11 @@
  * On utilise la médiane d'une fenêtre d'images (insensible aux à-coups
  * ponctuels, ex. chargement d'un morceau du monde).
  *
+ * Période de chauffe : les premières secondes (compilation des shaders,
+ * envoi des textures) sont ignorées. Sans elle, le jeu baissait la
+ * résolution au démarrage puis tentait de la remonter toutes les 2, 4, 8,
+ * 16 s : l'image changeait de netteté pendant une trentaine de secondes.
+ *
  * Module pur (pas de Babylon).
  */
 export interface DynamicResolutionOptions {
@@ -26,6 +31,8 @@ export interface DynamicResolutionOptions {
   readonly upgradeAfterWindows?: number;
   /** Plafond de l'attente après des échecs répétés. */
   readonly maxUpgradeAfterWindows?: number;
+  /** Durée de jeu (ms) ignorée au démarrage. */
+  readonly warmupMs?: number;
 }
 
 const SLOW_RATIO = 1.15; // médiane > 115 % de la cible = trop lent
@@ -42,6 +49,7 @@ export class DynamicResolution {
   private stableWindows = 0;
   /** Vrai juste après une hausse : la fenêtre suivante sert de test. */
   private probing = false;
+  private warmupLeft: number;
 
   constructor(private readonly options: DynamicResolutionOptions) {
     this._scale = options.maxScale;
@@ -50,6 +58,7 @@ export class DynamicResolution {
     this.baseUpgradeAfter = options.upgradeAfterWindows ?? 4;
     this.maxUpgradeAfter = options.maxUpgradeAfterWindows ?? 32;
     this.upgradeAfter = this.baseUpgradeAfter;
+    this.warmupLeft = options.warmupMs ?? 0;
   }
 
   get scale(): number {
@@ -59,6 +68,10 @@ export class DynamicResolution {
   /** Ajoute la durée d'une image (ms). Retourne l'échelle courante. */
   sample(frameMs: number): number {
     if (!Number.isFinite(frameMs) || frameMs <= 0) return this._scale;
+    if (this.warmupLeft > 0) {
+      this.warmupLeft -= frameMs;
+      return this._scale;
+    }
     this.samples.push(frameMs);
     if (this.samples.length < this.windowSize) return this._scale;
 
@@ -99,6 +112,7 @@ export class DynamicResolution {
     this.stableWindows = 0;
     this.probing = false;
     this.upgradeAfter = this.baseUpgradeAfter;
+    this.warmupLeft = this.options.warmupMs ?? 0;
   }
 }
 

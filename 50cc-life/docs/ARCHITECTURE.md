@@ -139,6 +139,7 @@ s'applique immédiatement à chaque image, sans latence.
 | Distance de vue | 120 m | 250 m | 500 m | 900 m |
 | Images/s visées | 30 | 60 | illimité | illimité |
 | Résolution dynamique min. | 60 % | 60 % | 70 % | 85 % |
+| Reflets du ciel | — | oui | oui | oui |
 
 - **Détection automatique** au premier lancement, à partir du GPU (nom lu via
   WebGL), du type d'appareil et de la mémoire. Sur mobile, le maximum est
@@ -151,6 +152,12 @@ s'applique immédiatement à chaque image, sans latence.
   avant de réessayer, parce qu'avec la synchro verticale la marge du GPU
   n'est pas mesurable directement. Le calcul se base sur la médiane de
   30 images, ce qui ignore les à-coups ponctuels.
+- **Anti-clignotement.** Le changement de résolution est appliqué *au début*
+  de l'image suivante, juste avant le rendu. Redimensionner le canvas juste
+  après l'avoir dessiné l'efface, et le navigateur affichait une image vide.
+  En plus, les 6 premières secondes (compilation des shaders) sont ignorées
+  et les remontées sont rares (toutes les 4 s, puis 8, 16… jusqu'à 32 s).
+  Avant ce correctif, l'image clignotait pendant environ 30 s au démarrage.
 - **Tone mapping** « Khronos PBR Neutral » : il respecte la vraie couleur des
   matériaux, comme une peinture de cyclo.
 - **Brouillard** calé sur la distance de vue : il masquera le chargement
@@ -387,6 +394,18 @@ plaque d'immatriculation (GV-050 SM) est inventée.
 La fourche s'enfonce **le long de ses tubes** et le bras oscillant **pivote**
 avec la suspension.
 
+**Style** : celui des 50 supermotard récentes (repères publics du segment :
+1 380 mm d'empattement, pneus 100/80-17 et 130/70-17, disque avant pétale de
+300 mm, fourche inversée, cadre acier double berceau), sans copier de modèle
+ni de déco réelle. Le modèle comprend :
+- un cadre noir brillant ;
+- un masque avant anguleux avec deux optiques LED en biais et un feu de jour ;
+- des protège-mains ;
+- des disques pétale flottants ;
+- un sabot moteur en alu ;
+- des écopes en pointe et des caches latéraux longs ;
+- un garde-boue intérieur.
+
 **Coût maîtrisé pour le mobile** : les surfaces de même nature (métal,
 chrome, plastique brillant, plastique mat, feux) partagent un matériau, et
 la couleur est portée par les sommets. On obtient environ 30 appels GPU pour
@@ -546,6 +565,8 @@ sont gratuits ; seule la publication sur les stores est payante (Google Play :
 | D28 | Modèles détaillés construits en code, matériaux partagés + couleurs par sommet | Beaucoup de détails, peu d'appels GPU ; en attendant les modèles Blender |
 | D29 | Ciel de reflets procédural, coupé en qualité Basse | Reflets PBR crédibles sans fichier HDR ; préserve les petits mobiles |
 | D30 | Registre de triches alimenté par chaque système (onglet DEV) | L'onglet grandit avec le jeu sans dépendre des systèmes ; règle écrite dans CLAUDE.md |
+| D31 | Résolution changée avant le rendu, période de chauffe de 6 s, remontées rares | Supprime le clignotement du démarrage (image vide après un redimensionnement, essais répétés) |
+| D32 | Un appui reste valable pendant l'image qui suit, même longue | Aucun appui perdu sur un appareil qui rame (images de plus de 200 ms) |
 
 ## 15. Feuille de route
 

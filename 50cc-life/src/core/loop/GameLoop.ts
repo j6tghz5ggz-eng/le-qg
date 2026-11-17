@@ -21,6 +21,8 @@ export interface LoopCallbacks {
   fixedUpdate(dt: number): void;
   lateFixedUpdate(dt: number): void;
   update(dt: number, alpha: number): void;
+  /** Au début de chaque image, avant le rendu (ex. changer la résolution). */
+  beforeRender?(): void;
   /** Après chaque image rendue, avec la durée de l'image en ms. */
   afterRender(frameMs: number): void;
   onError(error: unknown): void;
@@ -71,6 +73,7 @@ export class GameLoop {
 
   private readonly frame = (): void => {
     try {
+      this.callbacks.beforeRender?.();
       this.scene.render();
       this.callbacks.afterRender(this.engine.getDeltaTime());
     } catch (error) {

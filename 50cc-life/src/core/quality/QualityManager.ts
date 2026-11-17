@@ -28,6 +28,8 @@ export class QualityManager {
   readonly isUserChoice: boolean;
   private readonly dynamic: DynamicResolution;
   private engine: AbstractEngine | null = null;
+  /** Nouvelle échelle à appliquer au début de la prochaine image. */
+  private pending = false;
 
   constructor(private readonly platform: PlatformInfo) {
     const saved = readPref(PREF_KEY);
@@ -38,6 +40,11 @@ export class QualityManager {
       targetFrameMs: 1000 / (this.profile.targetFps ?? 60),
       minScale: this.profile.minRenderScale,
       maxScale: 1,
+      // Démarrage ignoré (shaders, textures) ; hausses tentées rarement :
+      // chaque essai raté se voit (l'image devient floue puis nette).
+      warmupMs: 6000,
+      upgradeAfterWindows: 8,
+      maxUpgradeAfterWindows: 64,
     });
   }
 
@@ -55,7 +62,17 @@ export class QualityManager {
   /** À appeler après chaque image rendue, avec sa durée en ms. */
   onFrame(frameMs: number): void {
     const before = this.dynamic.scale;
-    if (this.dynamic.sample(frameMs) !== before) this.applyScale();
+    // Pas de redimensionnement ici : changer la taille du canvas juste
+    // après l'avoir dessiné l'efface, et le navigateur afficherait une
+    // image vide (un flash). On applique au début de l'image suivante.
+    if (this.dynamic.sample(frameMs) !== before) this.pending = true;
+  }
+
+  /** À appeler au début de chaque image, avant le rendu. */
+  beginFrame(): void {
+    if (!this.pending) return;
+    this.pending = false;
+    this.applyScale();
   }
 
   /** Ré-applique la résolution (ex. : fenêtre déplacée sur un autre écran). */

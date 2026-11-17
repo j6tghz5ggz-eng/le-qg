@@ -6,6 +6,8 @@
  *   ce que le gameplay le consomme, pendant 200 ms maximum : un appui bref
  *   n'est jamais perdu, même si la simulation n'a pas tourné pendant
  *   l'image, et un saut demandé juste avant d'atterrir part à l'atterrissage.
+ *   Sur un appareil qui rame (images de plus de 200 ms), un appui reste
+ *   valable pendant la première image qui suit : il n'est jamais perdu.
  * - Déplacement : somme des sources, limitée à une longueur de 1.
  * - Regard : rotations en radians accumulées jusqu'à consommation.
  *
@@ -18,7 +20,9 @@ export const PRESS_BUFFER_MS = 200;
 
 export class ActionState {
   private readonly holders = new Map<ButtonAction, Set<string>>();
-  private readonly pressedAt = new Map<ButtonAction, number>();
+  private readonly pressedAt = new Map<ButtonAction, { readonly time: number; readonly frame: number }>();
+  /** Numéro de l'image en cours (voir beginFrame). */
+  private frame = 0;
   private readonly moves = new Map<string, Vec2>();
   private readonly axes = new Map<AxisAction, Map<string, number>>();
   private lookYaw = 0;
@@ -34,7 +38,7 @@ export class ActionState {
         set = new Set();
         this.holders.set(action, set);
       }
-      if (set.size === 0) this.pressedAt.set(action, this.now());
+      if (set.size === 0) this.pressedAt.set(action, { time: this.now(), frame: this.frame });
       set.add(source);
     } else {
       set?.delete(source);
@@ -45,12 +49,20 @@ export class ActionState {
     return (this.holders.get(action)?.size ?? 0) > 0;
   }
 
-  /** Vrai une seule fois par appui récent (moins de PRESS_BUFFER_MS). */
+  /** À appeler au début de chaque image (avant que le gameplay lise les appuis). */
+  beginFrame(): void {
+    this.frame++;
+  }
+
+  /**
+   * Vrai une seule fois par appui récent : moins de PRESS_BUFFER_MS, ou fait
+   * pendant l'image précédente (même longue).
+   */
   consumePress(action: ButtonAction): boolean {
     const at = this.pressedAt.get(action);
     if (at === undefined) return false;
     this.pressedAt.delete(action);
-    return this.now() - at <= PRESS_BUFFER_MS;
+    return this.now() - at.time <= PRESS_BUFFER_MS || this.frame - at.frame === 1;
   }
 
   /** Vecteur de déplacement d'une source : x = droite, y = avant, dans [-1, 1]. */

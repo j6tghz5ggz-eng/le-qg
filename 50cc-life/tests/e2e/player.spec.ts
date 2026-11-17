@@ -35,8 +35,9 @@ test.describe('joueur sur PC', () => {
     await startGame(page);
     const start = await player(page);
 
+    // Piloté par la position (pas par le temps) : indépendant de la vitesse de la machine.
     await page.keyboard.down('KeyS');
-    await page.waitForTimeout(900);
+    await page.waitForFunction((z0) => window.__50CC__!.player.z < z0 - 0.5, start.z, { timeout: 10_000 });
     await page.keyboard.up('KeyS');
     const afterWalk = await player(page);
     expect(afterWalk.z).toBeLessThan(start.z - 0.5);

@@ -197,6 +197,7 @@ export class Game {
         update: (dt, alpha) => {
           for (const s of this.systems) s.update?.(dt, alpha);
         },
+        beforeRender: () => quality.beginFrame(),
         afterRender: (frameMs) => quality.onFrame(frameMs),
         onError: (error) => this.fail(t('error.generic'), error),
       });

@@ -72,4 +72,14 @@ describe('DynamicResolution', () => {
     dr.sample(0);
     expect(dr.scale).toBe(1);
   });
+
+  it('période de chauffe : les à-coups du démarrage ne baissent pas la résolution', () => {
+    const dr = new DynamicResolution({ targetFrameMs: TARGET, minScale: 0.6, maxScale: 1, windowSize: 10, warmupMs: 1000 });
+    // 1 s d'images très lentes (compilation des shaders) : ignorées.
+    for (let i = 0; i < 10; i++) dr.sample(100);
+    expect(dr.scale).toBe(1);
+    // Ensuite, la lenteur compte de nouveau.
+    for (let i = 0; i < 10; i++) dr.sample(TARGET * 2);
+    expect(dr.scale).toBeLessThan(1);
+  });
 });
