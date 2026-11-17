@@ -48,6 +48,14 @@ export interface Decal {
 export type PartVisual =
   | { readonly kind: 'box'; readonly size: readonly [number, number, number]; readonly color: Rgb; readonly metallic?: number }
   | { readonly kind: 'cylinder'; readonly diameter: number; readonly height: number; readonly axis: 'x' | 'y' | 'z'; readonly color: Rgb; readonly metallic?: number }
+  /** Haut moteur et périphériques, modèles détaillés (voir partMeshes). */
+  | { readonly kind: 'piston' }
+  | { readonly kind: 'cylinderBlock' }
+  | { readonly kind: 'cylinderHead' }
+  | { readonly kind: 'sparkPlug' }
+  | { readonly kind: 'carburetor'; readonly scale: number; readonly body: Rgb; readonly cap: Rgb }
+  | { readonly kind: 'airbox' }
+  | { readonly kind: 'cdi'; readonly color: Rgb }
   | {
       /** Pot de détente « passage haut » (le tracé est commun, voir exhaustGeometry). */
       readonly kind: 'chamber';
@@ -91,7 +99,7 @@ export const PARTS: readonly PartDefinition[] = [
     mass: 0.15,
     price: 25,
     effects: {},
-    visual: { kind: 'cylinder', diameter: 0.045, height: 0.04, axis: 'y', color: ALU, metallic: 0.3 },
+    visual: { kind: 'piston' },
   },
   {
     id: 'cylinder-50',
@@ -100,7 +108,7 @@ export const PARTS: readonly PartDefinition[] = [
     mass: 2.2,
     price: 90,
     effects: {},
-    visual: { kind: 'box', size: [0.13, 0.15, 0.13], color: [0.22, 0.22, 0.23], metallic: 0.2 },
+    visual: { kind: 'cylinderBlock' },
   },
   {
     id: 'head-50',
@@ -109,7 +117,7 @@ export const PARTS: readonly PartDefinition[] = [
     mass: 0.6,
     price: 45,
     effects: {},
-    visual: { kind: 'box', size: [0.135, 0.05, 0.135], color: ALU, metallic: 0.3 },
+    visual: { kind: 'cylinderHead' },
   },
   {
     id: 'plug-std',
@@ -118,7 +126,7 @@ export const PARTS: readonly PartDefinition[] = [
     mass: 0.05,
     price: 6,
     effects: {},
-    visual: { kind: 'cylinder', diameter: 0.024, height: 0.06, axis: 'y', color: [0.92, 0.9, 0.86] },
+    visual: { kind: 'sparkPlug' },
   },
   {
     // Pot d'origine : un restricteur soudé dans le coude étrangle le moteur
@@ -194,7 +202,7 @@ export const PARTS: readonly PartDefinition[] = [
     mass: 0.4,
     price: 40,
     effects: { restriction: { startRpm: 9000, endRpm: 12000, floor: 0.8 } },
-    visual: { kind: 'box', size: [0.07, 0.07, 0.09], color: ALU, metallic: 0.3 },
+    visual: { kind: 'carburetor', scale: 1, body: ALU, cap: [0.55, 0.55, 0.58] },
   },
   {
     id: 'carb-17',
@@ -203,7 +211,7 @@ export const PARTS: readonly PartDefinition[] = [
     mass: 0.45,
     price: 85,
     effects: { powerFactor: 1.06 },
-    visual: { kind: 'box', size: [0.075, 0.075, 0.1], color: [0.2, 0.2, 0.22], metallic: 0.5 },
+    visual: { kind: 'carburetor', scale: 1.15, body: [0.82, 0.82, 0.85], cap: [0.08, 0.08, 0.09] },
   },
   {
     id: 'airfilter-std',
@@ -212,7 +220,7 @@ export const PARTS: readonly PartDefinition[] = [
     mass: 0.2,
     price: 12,
     effects: {},
-    visual: { kind: 'cylinder', diameter: 0.11, height: 0.14, axis: 'x', color: BLACK },
+    visual: { kind: 'airbox' },
   },
   {
     // Coupe l'allumage à 8 700 tr/min : ≈ 60 km/h en 6e, atteints en descente.
@@ -222,7 +230,7 @@ export const PARTS: readonly PartDefinition[] = [
     mass: 0.3,
     price: 35,
     effects: { limiterRpm: 8700 },
-    visual: { kind: 'box', size: [0.07, 0.035, 0.09], color: BLACK },
+    visual: { kind: 'cdi', color: BLACK },
   },
   {
     id: 'cdi-free',
@@ -231,7 +239,7 @@ export const PARTS: readonly PartDefinition[] = [
     mass: 0.3,
     price: 55,
     effects: { limiterRpm: 11800 },
-    visual: { kind: 'box', size: [0.07, 0.035, 0.09], color: [0.75, 0.12, 0.1] },
+    visual: { kind: 'cdi', color: [0.75, 0.12, 0.1] },
   },
 ];
 

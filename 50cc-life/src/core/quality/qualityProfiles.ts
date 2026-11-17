@@ -34,6 +34,12 @@ export interface QualityProfile {
   readonly targetFps: number | null;
   /** Plancher de la résolution dynamique (0.6 = 60 % de la résolution). */
   readonly minRenderScale: number;
+  /**
+   * Reflets du ciel sur les matériaux (environnement PBR). Coûteux par
+   * pixel : coupé en Basse (petits mobiles), remplacé par plus de lumière
+   * d'ambiance.
+   */
+  readonly reflections: boolean;
 }
 
 export const QUALITY_PROFILES: Readonly<Record<QualityId, QualityProfile>> = {
@@ -46,6 +52,7 @@ export const QUALITY_PROFILES: Readonly<Record<QualityId, QualityProfile>> = {
     viewDistance: 120,
     targetFps: 30,
     minRenderScale: 0.6,
+    reflections: false,
   },
   medium: {
     id: 'medium',
@@ -56,6 +63,7 @@ export const QUALITY_PROFILES: Readonly<Record<QualityId, QualityProfile>> = {
     viewDistance: 250,
     targetFps: 60,
     minRenderScale: 0.6,
+    reflections: true,
   },
   high: {
     id: 'high',
@@ -66,6 +74,7 @@ export const QUALITY_PROFILES: Readonly<Record<QualityId, QualityProfile>> = {
     viewDistance: 500,
     targetFps: null,
     minRenderScale: 0.7,
+    reflections: true,
   },
   ultra: {
     id: 'ultra',
@@ -76,6 +85,7 @@ export const QUALITY_PROFILES: Readonly<Record<QualityId, QualityProfile>> = {
     viewDistance: 900,
     targetFps: null,
     minRenderScale: 0.85,
+    reflections: true,
   },
 };
 

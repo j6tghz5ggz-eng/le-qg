@@ -123,6 +123,12 @@ export class TestWorld implements GameSystem {
     this.probe = this.addCrate(new Vector3(3.5, 20, 2)).mesh;
   }
 
+  /** La zone d'ombre suit la caméra. */
+  update(): void {
+    const camera = this.scene.activeCamera;
+    if (camera) this.env.follow(camera.globalPosition);
+  }
+
   /** Ombres : utilisé par les véhicules. */
   get environment(): WorldEnvironment {
     return this.env;

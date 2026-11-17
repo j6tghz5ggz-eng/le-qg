@@ -19,6 +19,7 @@ import { CreateTorus } from '@babylonjs/core/Meshes/Builders/torusBuilder';
 import { CreateTube } from '@babylonjs/core/Meshes/Builders/tubeBuilder';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import type { Scene } from '@babylonjs/core/scene';
+import { box, pipe, rod, v3 } from '../core/rendering/meshKit';
 import { CHAMBER_PATH, SILENCER_DIRECTION, chamberRadius } from './exhaustGeometry';
 import type { Decal, PartDefinition } from './parts';
 
@@ -195,13 +196,13 @@ function sampleAt(points: readonly Vector3[], distance: number): { point: Vector
 function createChamber(scene: Scene, def: PartDefinition, v: Extract<PartDefinition['visual'], { kind: 'chamber' }>): Mesh {
   const steel = materialFor(scene, v.color, v.metallic);
   const dark = materialFor(scene, [0.06, 0.06, 0.065], 0.4);
-  const curve = Curve3.CreateCatmullRomSpline(CHAMBER_PATH.map((p) => Vector3.FromArray(p)), 12);
+  const curve = Curve3.CreateCatmullRomSpline(CHAMBER_PATH.map((p) => Vector3.FromArray(p)), 8);
   const path = curve.getPoints();
   const total = curve.length();
   const radiusAt = (d: number): number => chamberRadius(v.belly, d / total);
   const pieces: Piece[] = [];
 
-  pieces.push([CreateTube(`${def.id}-body`, { path, radiusFunction: (_i, d) => radiusAt(d), tessellation: 18, cap: Mesh.CAP_ALL }, scene), steel]);
+  pieces.push([CreateTube(`${def.id}-body`, { path, radiusFunction: (_i, d) => radiusAt(d), tessellation: 16, cap: Mesh.CAP_ALL }, scene), steel]);
 
   // Bride et ressorts de fixation sur le cylindre.
   const start = sampleAt(path, 0.004);
@@ -209,7 +210,7 @@ function createChamber(scene: Scene, def: PartDefinition, v: Extract<PartDefinit
   // Cordons de soudure aux jonctions des cônes.
   for (const t of [0.16, 0.46, 0.64, 0.86]) {
     const s = sampleAt(path, t * total);
-    const ring = CreateTorus(`${def.id}-weld`, { diameter: chamberRadius(v.belly, t) * 2, thickness: 0.004, tessellation: 18 }, scene);
+    const ring = CreateTorus(`${def.id}-weld`, { diameter: chamberRadius(v.belly, t) * 2, thickness: 0.004, tessellation: 10 }, scene);
     pieces.push([orient(ring, s.point, s.tangent), steel]);
   }
   // Patte de fixation (silentbloc) côté cadre, sous le ventre.
@@ -255,7 +256,7 @@ function createSilencer(scene: Scene, def: PartDefinition, v: Extract<PartDefini
   const bodyStart = 0.04 + capLength;
   pieces.push([along(CreateCylinder(`${def.id}-body`, { diameter: D, height: bodyLength, tessellation: 20 }, scene), bodyStart + bodyLength / 2), body]);
   for (const y of [bodyStart + 0.02, bodyStart + bodyLength - 0.02]) {
-    pieces.push([along(CreateTorus(`${def.id}-clamp`, { diameter: D + 0.002, thickness: 0.007, tessellation: 20 }, scene), y), caps]);
+    pieces.push([along(CreateTorus(`${def.id}-clamp`, { diameter: D + 0.002, thickness: 0.007, tessellation: 12 }, scene), y), caps]);
   }
   const rearStart = bodyStart + bodyLength;
   pieces.push([along(CreateCylinder(`${def.id}-capr`, { diameterBottom: D, diameterTop: D * 0.72, height: capLength, tessellation: 18 }, scene), rearStart + capLength / 2), caps]);
@@ -272,6 +273,134 @@ function createSilencer(scene: Scene, def: PartDefinition, v: Extract<PartDefini
   mesh.rotationQuaternion = Quaternion.FromUnitVectorsToRef(Vector3.Up(), Vector3.FromArray(SILENCER_DIRECTION), new Quaternion());
   mesh.bakeCurrentTransformIntoVertices();
   return mesh;
+}
+
+// --- Haut moteur et périphériques ------------------------------------------
+
+const CAST: Rgb = [0.6, 0.6, 0.62]; // alu de fonderie
+const STEEL: Rgb = [0.85, 0.85, 0.87];
+const RUBBER: Rgb = [0.03, 0.03, 0.03];
+
+/** Piston Ø40 : jupe, segments, axe. */
+function createPiston(scene: Scene, def: PartDefinition): Mesh {
+  const alu = materialFor(scene, CAST, 0.85);
+  const dark = materialFor(scene, [0.12, 0.12, 0.13], 0.9);
+  const pieces: Piece[] = [[CreateCylinder(`${def.id}-skirt`, { diameter: 0.04, height: 0.04, tessellation: 20 }, scene), alu]];
+  for (const y of [0.013, 0.006]) {
+    const ring = CreateTorus(`${def.id}-ring`, { diameter: 0.0402, thickness: 0.0016, tessellation: 10 }, scene);
+    ring.position.y = y;
+    pieces.push([ring, dark]);
+  }
+  pieces.push([rod(scene, `${def.id}-pin`, v3(-0.021, -0.006, 0), v3(0.021, -0.006, 0), 0.01, 10), materialFor(scene, STEEL, 1)]);
+  return assemble(def.id, pieces);
+}
+
+/** Cylindre 2T refroidi par eau : fût, embase, plan de joint, goujons, lumière d'échappement. */
+function createCylinderBlock(scene: Scene, def: PartDefinition): Mesh {
+  const alu = materialFor(scene, CAST, 0.8);
+  const steel = materialFor(scene, STEEL, 1);
+  const pieces: Piece[] = [
+    [box(scene, 'body', v3(0, 0, 0), 0.115, 0.12, 0.115), alu],
+    [box(scene, 'base', v3(0, -0.064, 0), 0.13, 0.012, 0.13), alu],
+    [box(scene, 'deck', v3(0, 0.0625, 0), 0.12, 0.005, 0.12), materialFor(scene, [0.75, 0.75, 0.77], 0.9)],
+    // Lumière d'échappement (vers l'avant) avec ses goujons de bride.
+    [rod(scene, 'port', v3(0, -0.03, 0.05), v3(0, -0.03, 0.072), 0.045, 16), alu],
+    // Boîte à clapets (admission, à l'arrière).
+    [box(scene, 'reed', v3(0, -0.048, -0.066), 0.07, 0.045, 0.02), alu],
+    // Sortie de liquide de refroidissement.
+    [rod(scene, 'coolant', v3(0.058, 0.03, 0.02), v3(0.074, 0.03, 0.02), 0.012, 8), alu],
+  ];
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) pieces.push([rod(scene, 'stud', v3(sx * 0.047, -0.06, sz * 0.047), v3(sx * 0.047, 0.072, sz * 0.047), 0.008, 6), steel]);
+    pieces.push([rod(scene, 'port-stud', v3(sx * 0.03, -0.03, 0.07), v3(sx * 0.03, -0.03, 0.08), 0.006, 6), steel]);
+  }
+  return assemble(def.id, pieces);
+}
+
+/** Culasse : semelle, dôme, écrous, puits de bougie, sortie d'eau. */
+function createCylinderHead(scene: Scene, def: PartDefinition): Mesh {
+  const alu = materialFor(scene, [0.72, 0.72, 0.74], 0.85);
+  const steel = materialFor(scene, STEEL, 1);
+  const pieces: Piece[] = [
+    [box(scene, 'plate', v3(0, -0.006, 0), 0.122, 0.034, 0.122), alu],
+    [CreateCylinder('dome', { diameterBottom: 0.1, diameterTop: 0.05, height: 0.022, tessellation: 24 }, scene), alu],
+    [rod(scene, 'boss', v3(0, 0.02, 0), v3(0, 0.028, 0), 0.03, 16), alu],
+    [pipe(scene, 'outlet', [v3(0.03, 0.012, 0.03), v3(0.035, 0.03, 0.035), v3(0.035, 0.035, 0.05)], 0.006, 8), alu],
+  ];
+  pieces[1]![0].position.y = 0.021;
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) pieces.push([rod(scene, 'nut', v3(sx * 0.047, 0.011, sz * 0.047), v3(sx * 0.047, 0.022, sz * 0.047), 0.013, 6), steel]);
+  }
+  return assemble(def.id, pieces);
+}
+
+/** Bougie : filetage, six-pans, isolant céramique à ailettes, borne. */
+function createSparkPlug(scene: Scene, def: PartDefinition): Mesh {
+  const steel = materialFor(scene, STEEL, 1);
+  const ceramic = materialFor(scene, [0.94, 0.93, 0.9], 0, 0.25);
+  const pieces: Piece[] = [
+    [rod(scene, 'thread', v3(0, -0.03, 0), v3(0, -0.014, 0), 0.012, 12), steel],
+    [rod(scene, 'hex', v3(0, -0.014, 0), v3(0, -0.003, 0), 0.02, 6), steel],
+    [rod(scene, 'insulator', v3(0, -0.003, 0), v3(0, 0.024, 0), 0.0115, 14, 0.0085), ceramic],
+    [rod(scene, 'terminal', v3(0, 0.024, 0), v3(0, 0.03, 0), 0.006, 8), steel],
+  ];
+  for (const y of [0.004, 0.01, 0.016]) {
+    const rib = CreateTorus('rib', { diameter: 0.0105 - (y - 0.004) * 0.08, thickness: 0.002, tessellation: 8 }, scene);
+    rib.position.y = y;
+    pieces.push([rib, ceramic]);
+  }
+  return assemble(def.id, pieces);
+}
+
+/** Carburateur : corps, boisseau, chapeau, cuve, pipe d'admission, manchon de filtre. */
+function createCarburetor(scene: Scene, def: PartDefinition, v: Extract<PartDefinition['visual'], { kind: 'carburetor' }>): Mesh {
+  const k = v.scale;
+  const body = materialFor(scene, v.body, 0.85);
+  const cap = materialFor(scene, v.cap, 0.8);
+  const rubber = materialFor(scene, RUBBER, 0, 0.85);
+  const pieces: Piece[] = [
+    [box(scene, 'body', v3(0, 0, 0), 0.042 * k, 0.045 * k, 0.05 * k), body],
+    [rod(scene, 'tower', v3(0, 0.02 * k, 0), v3(0, 0.05 * k, 0), 0.036 * k, 16), body],
+    [rod(scene, 'cap', v3(0, 0.05 * k, 0), v3(0, 0.058 * k, 0), 0.04 * k, 16), cap],
+    [rod(scene, 'bowl', v3(0, -0.022 * k, 0), v3(0, -0.05 * k, 0), 0.04 * k, 16), body],
+    [rod(scene, 'choke', v3(-0.02 * k, 0.01, 0.005), v3(-0.035 * k, 0.012, 0.005), 0.008, 8), cap],
+    // Pipe d'admission vers la boîte à clapets du cylindre (avant).
+    [pipe(scene, 'manifold', [v3(0, 0, 0.022), v3(0.01, 0, 0.09), v3(0.03, 0, 0.165)], 0.016 * k, 12), rubber],
+    // Manchon vers la boîte à air (arrière, en montant).
+    [pipe(scene, 'boot', [v3(0, 0, -0.022), v3(0.01, 0.04, -0.07), v3(0.025, 0.11, -0.12)], 0.019 * k, 12), rubber],
+  ];
+  return assemble(def.id, pieces);
+}
+
+/** Boîte à air sous la selle (avec le filtre en mousse dedans) et sa prise d'air. */
+function createAirbox(scene: Scene, def: PartDefinition): Mesh {
+  const plastic = materialFor(scene, [0.04, 0.04, 0.045], 0, 0.7);
+  const foam = materialFor(scene, [0.75, 0.25, 0.08], 0, 0.95);
+  const pieces: Piece[] = [
+    [box(scene, 'box', v3(0, 0, 0), 0.13, 0.11, 0.16), plastic],
+    [box(scene, 'lid', v3(0, 0.06, 0), 0.136, 0.012, 0.166), plastic],
+    [rod(scene, 'snorkel', v3(0, 0.03, -0.08), v3(0, 0.045, -0.12), 0.05, 14), plastic],
+    // Le bord orange du filtre en mousse dépasse sous le couvercle.
+    [box(scene, 'foam', v3(0, 0.051, 0), 0.128, 0.006, 0.158), foam],
+    [box(scene, 'clip', v3(0.066, 0.05, 0.05), 0.006, 0.03, 0.02), materialFor(scene, STEEL, 1)],
+  ];
+  return assemble(def.id, pieces);
+}
+
+/** Boîtier CDI : boîtier à ailettes, connecteur, fils, pattes. */
+function createCdi(scene: Scene, def: PartDefinition, v: Extract<PartDefinition['visual'], { kind: 'cdi' }>): Mesh {
+  const shell = materialFor(scene, v.color, 0.2, 0.45);
+  const pieces: Piece[] = [
+    [box(scene, 'case', v3(0, 0, 0), 0.065, 0.028, 0.085), shell],
+    [box(scene, 'plug', v3(0, 0, -0.05), 0.04, 0.02, 0.015), materialFor(scene, [0.9, 0.9, 0.86], 0, 0.5)],
+  ];
+  for (let i = 0; i < 4; i++) pieces.push([box(scene, 'fin', v3(-0.024 + i * 0.016, 0.017, 0.005), 0.004, 0.006, 0.07), shell]);
+  for (const sx of [-1, 1]) pieces.push([box(scene, 'tab', v3(sx * 0.04, -0.012, 0.03), 0.016, 0.003, 0.016), materialFor(scene, STEEL, 1)]);
+  const wire = materialFor(scene, RUBBER, 0, 0.5);
+  for (let i = 0; i < 3; i++) {
+    pieces.push([pipe(scene, 'wire', [v3(-0.01 + i * 0.01, 0, -0.057), v3(-0.012 + i * 0.012, -0.004, -0.075), v3(-0.015 + i * 0.015, -0.012, -0.09)], 0.0018, 6, 4), wire]);
+  }
+  return assemble(def.id, pieces);
 }
 
 /** Crée le modèle d'une pièce (origine = point d'ancrage). */
@@ -296,6 +425,27 @@ export function createPartMesh(scene: Scene, def: PartDefinition): Mesh {
       break;
     case 'silencer':
       mesh = createSilencer(scene, def, v);
+      break;
+    case 'piston':
+      mesh = createPiston(scene, def);
+      break;
+    case 'cylinderBlock':
+      mesh = createCylinderBlock(scene, def);
+      break;
+    case 'cylinderHead':
+      mesh = createCylinderHead(scene, def);
+      break;
+    case 'sparkPlug':
+      mesh = createSparkPlug(scene, def);
+      break;
+    case 'carburetor':
+      mesh = createCarburetor(scene, def, v);
+      break;
+    case 'airbox':
+      mesh = createAirbox(scene, def);
+      break;
+    case 'cdi':
+      mesh = createCdi(scene, def, v);
       break;
   }
   mesh.receiveShadows = true;

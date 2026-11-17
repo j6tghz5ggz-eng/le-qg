@@ -329,8 +329,17 @@ export class Bike {
       const visual = wheel.front ? v.front : v.rear;
       visual.spin.rotation.x = wheel.spin;
       const lift = Math.min(wheel.compression, this.spec.suspension.travel);
-      if (wheel.front) visual.mount.position.y = -this.visual.steer.position.y + lift;
-      else visual.mount.position.y = lift;
+      if (wheel.front && visual.rest && visual.axis) {
+        // Fourche inclinée : la roue s'enfonce le long des tubes.
+        const k = lift / visual.axis.y;
+        visual.mount.position.set(visual.rest.x + visual.axis.x * k, visual.rest.y + visual.axis.y * k, visual.rest.z + visual.axis.z * k);
+      } else if (wheel.front) {
+        visual.mount.position.y = -this.visual.steer.position.y + lift;
+      } else {
+        visual.mount.position.y = lift;
+        const arm = v.swingarm;
+        if (arm) arm.node.rotation.x = Math.atan2(arm.drop, arm.length) - Math.atan2(arm.drop - lift, arm.length);
+      }
     }
   }
 

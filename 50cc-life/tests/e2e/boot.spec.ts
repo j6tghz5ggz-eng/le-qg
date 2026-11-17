@@ -42,6 +42,8 @@ test.describe('démarrage du jeu', () => {
     await page.waitForFunction(() => window.__50CC__?.state === 'playing', null, { timeout: 60_000 });
     const count = await page.evaluate(() => window.__50CC__!.crateCount);
     await page.locator('.debug__toggle').click();
+    // Le bouton est dans l'onglet DEV (triches), groupe « Monde ».
+    await page.locator('.debug__tab[data-tab="dev"]').click();
     await page.getByRole('button', { name: /Lâcher une caisse/ }).click();
     await expect.poll(() => page.evaluate(() => window.__50CC__!.crateCount)).toBe(count + 1);
   });
