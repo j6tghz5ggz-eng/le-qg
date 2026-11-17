@@ -340,6 +340,8 @@ export class MechanicsSystem implements GameSystem {
     const cylinder = rig.engine.part('cylinder');
     if (cylinder) cylinder.condition = Math.max(0, cylinder.condition - 0.35);
     this.refreshStats(rig);
+    const p = rig.bike.position;
+    this.ctx.bus.emit('sfx', { id: 'seize', at: { x: p.x, y: p.y, z: p.z } });
     this.ctx.bus.emit('ui:notice', { message: t('wear.seized') });
   }
 
@@ -404,6 +406,7 @@ export class MechanicsSystem implements GameSystem {
     position.y += 0.05;
     this.spawnLoose(part, position);
     this.refreshStats(rig);
+    this.ctx.bus.emit('sfx', { id: 'partRemove', at: { x: position.x, y: position.y, z: position.z } });
     this.ctx.bus.emit('ui:notice', { message: `${rig.engine.definition(part).name} : ${t('mechanics.removed')}` });
   }
 
@@ -435,6 +438,7 @@ export class MechanicsSystem implements GameSystem {
     );
     const loose: LoosePart = { part, def, mesh, aggregate };
     this.loose.set(aggregate.body, loose);
+    this.ctx.impacts.watch(aggregate.body, def.category === 'airFilter' ? 'plastic' : 'metal');
     this.ctx.interactables.register(aggregate.body, {
       get label() {
         return partLabel(def, part);
@@ -499,6 +503,8 @@ export class MechanicsSystem implements GameSystem {
     this.candidate = null;
     this.candidateAction = null;
     this.showGhost(null);
+    const at = this.anchorWorld(rig, slot);
+    this.ctx.bus.emit('sfx', { id: 'partInstall', at: { x: at.x, y: at.y, z: at.z } });
     this.ctx.bus.emit('ui:notice', { message: `${loose.def.name} : ${t('mechanics.installed')}` });
   }
 

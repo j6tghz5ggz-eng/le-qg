@@ -40,6 +40,8 @@ export interface DebugHooks {
   readonly money: number;
   /** L'écran de la boutique est ouvert. */
   readonly shopOpen: boolean;
+  /** Nombre de bruitages demandés depuis le démarrage. */
+  readonly sfxCount: number;
   slotPosition(slot: string): { x: number; y: number; z: number } | null;
   /** Pièces posées dans le monde. */
   looseParts(): Array<{ name: string; x: number; y: number; z: number }>;

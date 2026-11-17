@@ -1,4 +1,5 @@
 import type { InputScheme } from '../core/input/actions';
+import type { SfxId } from '../audio/Sfx';
 
 /** États du jeu (machine à états simple, enrichie au fil des étapes). */
 export type GameState = 'boot' | 'loading' | 'playing' | 'paused' | 'error';
@@ -58,6 +59,8 @@ export interface GameEvents {
     /** Huile basse (graissage séparé), null sans réservoir d'huile. */
     readonly oilLow: boolean | null;
   };
+  /** Bruitage à jouer (dans le monde si `at` est donné). */
+  'sfx': { readonly id: SfxId; readonly at?: { readonly x: number; readonly y: number; readonly z: number }; readonly volume?: number };
   /** Le solde du porte-monnaie a changé (delta = 0 : affichage initial). */
   'money:changed': { readonly balance: number; readonly delta: number };
   /** Message court à afficher (ex. « Ralentissez pour descendre »). */

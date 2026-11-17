@@ -14,6 +14,7 @@ import type { InteractableRegistry } from '../core/interaction/Interactable';
 import type { PlatformInfo } from '../core/platform/platform';
 import type { QualityManager } from '../core/quality/QualityManager';
 import type { CheatRegistry } from '../debug/CheatRegistry';
+import type { ImpactSounds } from '../audio/SoundSystem';
 import type { GameEvents } from './events';
 
 export interface GameContext {
@@ -34,6 +35,8 @@ export interface GameContext {
    * init() ; toute nouvelle fonctionnalité utile pour tester en ajoute une.
    */
   readonly cheats: CheatRegistry;
+  /** Sons de choc des objets physiques (« watch » un corps et sa matière). */
+  readonly impacts: ImpactSounds;
 }
 
 /**

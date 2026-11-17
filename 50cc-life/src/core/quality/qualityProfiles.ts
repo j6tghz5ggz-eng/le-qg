@@ -45,24 +45,24 @@ export interface QualityProfile {
 export const QUALITY_PROFILES: Readonly<Record<QualityId, QualityProfile>> = {
   low: {
     id: 'low',
-    maxPixelRatio: 1,
+    maxPixelRatio: 1.5,
     msaa: false,
     fxaa: false,
     shadows: null,
     viewDistance: 120,
     targetFps: 30,
-    minRenderScale: 0.6,
+    minRenderScale: 0.75,
     reflections: false,
   },
   medium: {
     id: 'medium',
-    maxPixelRatio: 1.5,
+    maxPixelRatio: 2,
     msaa: false,
     fxaa: true,
     shadows: { mapSize: 1024, soft: false },
     viewDistance: 250,
     targetFps: 60,
-    minRenderScale: 0.6,
+    minRenderScale: 0.7,
     reflections: true,
   },
   high: {

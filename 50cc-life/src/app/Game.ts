@@ -29,7 +29,7 @@ import { t } from '../ui/i18n';
 import { showFatalError } from '../ui/screens/ErrorScreen';
 import { LoadingScreen } from '../ui/screens/LoadingScreen';
 import { showToast } from '../ui/screens/Toast';
-import { BIKE_SPAWN, CONTAINER_SPOTS, DELIVERY_SPOT, GARAGE_BOUNDS, PLAYER_SPAWN, SPARE_PART_SPOTS, TELEPORT_POINTS, TestWorld } from '../world/TestWorld';
+import { BIKE_SPAWN, CONTAINER_SPOTS, DELIVERY_SPOT, GARAGE_BOUNDS, PLAYER_SPAWN, SPARE_PART_SPOTS, TELEPORT_POINTS, TestWorld, isIndoors, surfaceAt } from '../world/TestWorld';
 import { CheatRegistry } from '../debug/CheatRegistry';
 import { EconomySystem } from '../economy/EconomySystem';
 import { MoneyHud } from '../ui/hud/MoneyHud';
@@ -37,6 +37,7 @@ import { ShopSystem } from '../economy/ShopSystem';
 import { ShopScreen } from '../ui/screens/ShopScreen';
 import { SaveSystem } from '../save/SaveSystem';
 import { FuelSystem } from '../vehicles/fuel/FuelSystem';
+import { SoundSystem } from '../audio/SoundSystem';
 import { MechanicsSystem } from '../mechanics/MechanicsSystem';
 import { SM50 } from '../vehicles/bike/specs';
 import { VehicleSystem } from '../vehicles/VehicleSystem';
@@ -87,6 +88,7 @@ export class Game {
 
       const input = new InputManager(this.canvas, platform, this.bus);
       const audio = new AudioManager();
+      const sounds = new SoundSystem(audio);
       const ctx: GameContext = {
         engine,
         scene,
@@ -99,6 +101,7 @@ export class Game {
         interactables: new InteractableRegistry(),
         uiRoot: this.uiRoot,
         cheats: new CheatRegistry(),
+        impacts: sounds,
       };
 
       loading.setProgress(0.6, t('loading.world'));
@@ -123,6 +126,7 @@ export class Game {
       const shop = new ShopSystem(economy.wallet, mechanics, { deliverySpot: DELIVERY_SPOT, sellArea: GARAGE_BOUNDS });
       fuel.attachShop(shop);
       const save = new SaveSystem({ economy, player, vehicles, mechanics, shop, fuel });
+      sounds.attach({ player, vehicles, interaction, fuel, surfaceAt, isIndoors });
       // Ordre important : le monde, le joueur (caméra), les véhicules, la
       // mécanique (fantôme de remontage), puis l'interaction (rayon depuis
       // la caméra, désactivée en conduite).
@@ -136,6 +140,7 @@ export class Game {
       await this.addSystem(mechanics, ctx);
       await this.addSystem(shop, ctx);
       await this.addSystem(interaction, ctx);
+      await this.addSystem(sounds, ctx);
       // En dernier : la sauvegarde s'applique une fois tous les systèmes prêts.
       await this.addSystem(save, ctx);
 
@@ -270,6 +275,9 @@ export class Game {
         get shopOpen() {
           return shopScreen.isOpen;
         },
+        get sfxCount() {
+          return sounds.played;
+        },
         slotPosition: (slot: string) => {
           const p = mechanics.slotWorldPosition(slot);
           return p ? { x: p.x, y: p.y, z: p.z } : null;
@@ -281,7 +289,7 @@ export class Game {
           return bike ? { x: bike.position.x, y: bike.position.y, z: bike.position.z, lean: bike.leanAngle } : null;
         },
         probeY: () => world.probeY(),
-      }, { scene, engine, player, vehicles, interaction, world, input, mechanics, economy, shop, save, fuel, cheats: ctx.cheats });
+      }, { scene, engine, player, vehicles, interaction, world, input, mechanics, economy, shop, save, fuel, sounds, audio, cheats: ctx.cheats });
 
       this.loop.start();
       this.setState('playing');

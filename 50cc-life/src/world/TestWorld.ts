@@ -86,6 +86,20 @@ export const TELEPORT_POINTS: ReadonlyArray<{ readonly id: string; readonly labe
 /** Route d'essai : axe x, de z = -20 à z = 180. */
 const ROAD = { x: -14, width: 7, zStart: -20, zEnd: 180 } as const;
 
+/** Dans le garage (pour le son : pas d'oiseaux, écho du béton). */
+export function isIndoors(x: number, z: number): boolean {
+  return x > GARAGE_BOUNDS.minX && x < GARAGE_BOUNDS.maxX && z > GARAGE_BOUNDS.minZ && z < GARAGE_BOUNDS.maxZ;
+}
+
+/** Sol sous un point : dur (garage, rampe, route, colline) ou herbe. */
+export function surfaceAt(x: number, z: number): 'hard' | 'grass' {
+  if (isIndoors(x, z)) return 'hard';
+  if (Math.abs(x - GARAGE.x) < GARAGE.doorWidth / 2 + 0.3 && z > GARAGE.z - 4.6 && z <= GARAGE.z - 3) return 'hard'; // rampe
+  if (Math.abs(x - ROAD.x) < ROAD.width / 2 && z > ROAD.zStart && z < ROAD.zEnd) return 'hard';
+  if (Math.abs(x - HILL.x) < HILL.width / 2 && z > HILL.zStart && z < HILL.zStart + 2 * HILL.rampLength + HILL.plateau) return 'hard';
+  return 'grass';
+}
+
 interface DynamicProp {
   readonly mesh: Mesh;
   readonly body: PhysicsAggregate;
@@ -230,6 +244,7 @@ export class TestWorld implements GameSystem {
       { name: 'garage-bench-top', size: [0.8, 0.05, 2.7], position: [cx - 3.42, 0.15 + 0.885, cz], material: darkConcrete },
     ];
     for (const spec of specs) this.staticBox(spec);
+    this.createDoorRamp();
     this.createGarageLight();
     this.createComputerDesk();
     this.createDeliveryPallet();
@@ -286,6 +301,26 @@ export class TestWorld implements GameSystem {
     }
   }
 
+  /**
+   * Rampe douce devant la porte : de la dalle (15 cm) au sol sur 1,5 m
+   * (10 %), sans marche à franchir à pied ni à moto.
+   */
+  private createDoorRamp(): void {
+    const rise = 0.15;
+    const run = 1.5;
+    const thick = 0.3;
+    const slope = Math.atan2(rise, run);
+    const front = GARAGE.z - 3; // bord avant de la dalle (porte)
+    this.staticBox({
+      name: 'garage-ramp',
+      size: [GARAGE.doorWidth + 0.4, thick, Math.hypot(run, rise)],
+      // Centre = milieu de la face du dessus, reculé d'une demi-épaisseur le long de la normale.
+      position: [GARAGE.x, rise / 2 - (thick / 2) * Math.cos(slope), front - run / 2 + (thick / 2) * Math.sin(slope)],
+      material: this.materials.darkConcrete,
+      tiltX: -slope,
+    });
+  }
+
   /** Plafonnier (point lumineux) et interrupteur à côté de la porte. */
   private createGarageLight(): void {
     const light = new PointLight('garage-light', new Vector3(GARAGE.x, GARAGE.height - 0.25, GARAGE.z), this.scene);
@@ -309,6 +344,7 @@ export class TestWorld implements GameSystem {
       useLabel: t('object.lightOff'),
       use: () => {
         on = !on;
+        this.ctx.bus.emit('sfx', { id: 'switch', at: { x: sw.position.x, y: sw.position.y, z: sw.position.z } });
         // Intensité à 0 plutôt que désactiver la lampe : pas de recompilation des shaders.
         light.intensity = on ? 14 : 0;
         glow.emissiveColor = on ? new Color3(1, 0.95, 0.85) : new Color3(0.05, 0.05, 0.05);
@@ -409,6 +445,7 @@ export class TestWorld implements GameSystem {
       this.scene,
     );
     this.register(body, { label: t('object.crate'), grabbable: true });
+    this.ctx.impacts.watch(body.body, 'wood');
     const crate = { mesh, body };
     this.crates.push(crate);
     return crate;

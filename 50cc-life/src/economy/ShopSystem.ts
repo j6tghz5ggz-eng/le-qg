@@ -101,6 +101,7 @@ export class ShopSystem implements GameSystem {
     if (price === null) return 'unknown';
     if (!this.wallet.spend(price)) return 'money';
     this.deliveries.push({ id, left: this.instantDelivery ? 0 : DELIVERY_SECONDS });
+    this.ctx.bus.emit('sfx', { id: 'purchase' });
     if (!this.instantDelivery) this.ctx.bus.emit('ui:notice', { message: t('shop.ordered') });
     return 'ok';
   }
@@ -119,6 +120,7 @@ export class ShopSystem implements GameSystem {
     const item = this.sellables().find((s) => s.uid === uid);
     if (!item || item.held || !this.mechanics.removeLoose(uid)) return null;
     this.wallet.add(item.price);
+    this.ctx.bus.emit('sfx', { id: 'sale' });
     return item.price;
   }
 
@@ -144,6 +146,7 @@ export class ShopSystem implements GameSystem {
       const product = this.products.get(d.id);
       if (product) product.deliver(position);
       else this.mechanics.spawnPart(d.id, 1, position);
+      this.ctx.bus.emit('sfx', { id: 'doorbell', at: { x: position.x, y: position.y + 1.5, z: position.z } });
       this.ctx.bus.emit('ui:notice', { message: t('shop.delivered') });
     }
   }

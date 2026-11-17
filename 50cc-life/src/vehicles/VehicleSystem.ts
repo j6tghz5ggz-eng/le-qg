@@ -25,7 +25,6 @@ import { readPref, writePref } from '../core/save/safeStorage';
 import { t } from '../ui/i18n';
 import { Bike, PARKED, type BikeControls } from './bike/Bike';
 import type { BikeSpec } from './bike/specs';
-import { EngineSound } from './audio/EngineSound';
 import { AutoClutch } from './simulation/AutoClutch';
 import { ManualDrivetrain } from './simulation/ManualDrivetrain';
 import type { ShiftResult, StartResult } from './simulation/Powertrain';
@@ -63,8 +62,6 @@ export class VehicleSystem implements GameSystem {
   private clutchLever = 1;
   private readonly autoClutch = new AutoClutch();
   private autoClutchOn = false;
-  private engineSound: EngineSound | null = null;
-  private lastThrottle = 0;
   private readonly ray = new PhysicsRaycastResult();
   private readonly spawns = new Map<Bike, VehicleSpawn>();
   /** Information affichée en visant une moto (niveaux d'essence…), fournie par le carburant. */
@@ -87,8 +84,6 @@ export class VehicleSystem implements GameSystem {
     const saved = readPref(AUTO_CLUTCH_PREF);
     // Par défaut : embrayage auto sur écran tactile, manuel ailleurs.
     this.autoClutchOn = saved === null ? ctx.input.scheme === 'touch' : saved === '1';
-    const audio = ctx.audio;
-    if (audio.context && audio.master) this.engineSound = new EngineSound(audio.context, audio.master);
     for (const spawn of this.initialSpawns) this.spawn(spawn);
     this.registerCheats();
   }
@@ -235,20 +230,16 @@ export class VehicleSystem implements GameSystem {
       if (input.consumePress('engine')) this.toggleEngine(riding);
       if (input.consumePress('gearUp')) this.shift(riding, 1);
       if (input.consumePress('gearDown')) this.shift(riding, -1);
-      if (riding.powertrain.consumeStall()) this.notice(t('vehicle.stalled'));
+      if (riding.powertrain.consumeStall()) {
+        this.notice(t('vehicle.stalled'));
+        this.sfxAt('stall', riding);
+      }
     }
     for (const bike of this.bikes) {
       bike.updateVisual(alpha);
       if (bike.position.y < FALL_LIMIT) this.respawn(bike);
     }
     const bike = this.riding;
-    const pt = bike?.powertrain;
-    this.engineSound?.update({
-      rpm: pt?.rpm ?? 0,
-      throttle: this.lastThrottle,
-      running: pt?.running ?? false,
-      loudness: pt?.loudness ?? 0.4,
-    });
     if (!bike) return;
     this.telemetryTimer += dt;
     if (this.telemetryTimer >= 1 / TELEMETRY_HZ) {
@@ -267,7 +258,6 @@ export class VehicleSystem implements GameSystem {
   }
 
   dispose(): void {
-    this.engineSound?.dispose();
     for (const bike of this.bikes) bike.dispose();
     this.bikes.length = 0;
   }
@@ -276,7 +266,6 @@ export class VehicleSystem implements GameSystem {
     const input = this.ctx.input;
     const move = input.getMoveAxes();
     const throttle = Math.max(input.getAxis('throttle'), Math.max(0, move.y));
-    this.lastThrottle = throttle;
     const powertrain = bike.powertrain;
     if (powertrain instanceof ManualDrivetrain && this.autoClutchOn) {
       const wheelRpm = (Math.max(bike.forwardSpeed, 0) / powertrain.spec.wheelRadius) * powertrain.ratio * RAD_TO_RPM;
@@ -312,6 +301,9 @@ export class VehicleSystem implements GameSystem {
     }
     const clutch = this.autoClutchOn ? 1 : this.clutchLever;
     const result: StartResult = powertrain.start(clutch);
+    if (powertrain.manual) this.sfxAt('kick', bike);
+    if (result.ok) this.sfxAt('enginePop', bike);
+    else if (result.reason === 'failed') this.sfxAt('engineCough', bike);
     if (result.ok) this.notice(t('vehicle.engineOn'));
     else if (result.reason === 'missing') this.notice(`${t('vehicle.cantStart')} ${result.missing.join(', ')}`);
     else if (result.reason === 'inGear') this.notice(t('vehicle.neutralToStart'));
@@ -329,7 +321,17 @@ export class VehicleSystem implements GameSystem {
       clutch = 1;
     }
     const result: ShiftResult = direction > 0 ? powertrain.shiftUp(clutch) : powertrain.shiftDown(clutch);
-    if (!result.ok && result.reason === 'clutch') this.notice(t('vehicle.clutchToShift'));
+    if (result.ok) this.sfxAt('gearShift', bike);
+    else if (result.reason === 'clutch') {
+      this.notice(t('vehicle.clutchToShift'));
+      this.sfxAt('gearGrind', bike);
+    }
+  }
+
+  /** Bruitage joué sur la moto (moteur, boîte). */
+  private sfxAt(id: 'kick' | 'enginePop' | 'engineCough' | 'gearShift' | 'gearGrind' | 'stall', bike: Bike): void {
+    const p = bike.position;
+    this.ctx.bus.emit('sfx', { id, at: { x: p.x, y: p.y + 0.2, z: p.z } });
   }
 
   private notice(message: string): void {

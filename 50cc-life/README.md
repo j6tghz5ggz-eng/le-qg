@@ -25,6 +25,8 @@ navigateur sur PC, Android et iOS.
 >   par le joueur (2 % conseillé), graissage séparé sur le supermotard,
 >   panne sèche.
 > - Usure des pièces en roulant ; sans huile, le moteur serre.
+> - Sons synthétisés en 3D : moteur, kick, vitesses, pas, atelier, versement,
+>   boutique, vent et oiseaux.
 
 ## Démarrer
 

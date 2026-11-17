@@ -275,10 +275,19 @@ export class InteractionSystem implements GameSystem {
   }
 
   private grab(target: Held | Target): void {
+    if (target.body) {
+      const p = target.body.transformNode.getAbsolutePosition();
+      this.ctx.bus.emit('sfx', { id: 'grab', at: { x: p.x, y: p.y, z: p.z } });
+    }
     if (!target.body) return;
     this.held = { body: target.body, item: target.item, mass: target.mass, angularDamping: target.body.getAngularDamping() };
     target.body.setAngularDamping(CARRY.heldAngularDamping);
     this.focus = null;
+  }
+
+  /** Action maintenue en cours (pour le son : cliquet de la clé). */
+  get activeHold(): { readonly continuous: boolean } | null {
+    return this.holding ? { continuous: this.holding.action.tick !== undefined } : null;
   }
 
   /** Lâche l'objet tenu (chargement d'une sauvegarde, téléportation…). */
@@ -292,6 +301,7 @@ export class InteractionSystem implements GameSystem {
     this.held = null;
     held.body.setAngularDamping(held.angularDamping);
     if (throwIt) {
+      this.ctx.bus.emit('sfx', { id: 'throw' });
       const direction = this.player.getForward(this.v.forward);
       held.body.setLinearVelocity(direction.scaleInPlace(throwSpeed(held.mass)));
     }

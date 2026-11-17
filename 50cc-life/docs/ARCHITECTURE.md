@@ -95,6 +95,7 @@ presque chaque semaine : on met à jour volontairement, tous les paquets
     │   ├── fuel/              réservoir (pur), carburant, jerricans et bidons d'huile
     │   ├── simulation/        boîte manuelle, embrayage auto, variateur (TS pur, testé)
     │   └── audio/             son moteur 2 temps synthétisé
+    ├── audio/                 bruitages synthétisés (Sfx) et chef d'orchestre du son (SoundSystem)
     ├── world/                 environnement (ciel, reflets, lumière, ombres), scène de test
     ├── debug/                 panneau (Infos / DEV), registre des triches, API pour les tests
     └── ui/                    écrans et HUD HTML/CSS, commandes tactiles, textes (i18n)
@@ -135,12 +136,12 @@ s'applique immédiatement à chaque image, sans latence.
 
 | | Basse | Moyenne | Haute | Ultra |
 |---|---|---|---|---|
-| Plafond pixel ratio | 1 | 1,5 | 2 | 3 |
+| Plafond pixel ratio | 1,5 | 2 | 2 | 3 |
 | Antialiasing | — | FXAA | MSAA | MSAA |
 | Ombres | — | nettes 1024 | douces 2048 | douces 4096 |
 | Distance de vue | 120 m | 250 m | 500 m | 900 m |
 | Images/s visées | 30 | 60 | illimité | illimité |
-| Résolution dynamique min. | 60 % | 60 % | 70 % | 85 % |
+| Résolution dynamique min. | 75 % | 70 % | 70 % | 85 % |
 | Reflets du ciel | — | oui | oui | oui |
 
 - **Détection automatique** au premier lancement, à partir du GPU (nom lu via
@@ -160,6 +161,11 @@ s'applique immédiatement à chaque image, sans latence.
   En plus, les 6 premières secondes (compilation des shaders) sont ignorées
   et les remontées sont rares (toutes les 4 s, puis 8, 16… jusqu'à 32 s).
   Avant ce correctif, l'image clignotait pendant environ 30 s au démarrage.
+- **Netteté.** Sur téléphone, le profil Basse plafonnait à 1 pixel rendu par
+  pixel CSS : sur un écran ×3, l'image 3D était calculée en 1/3 de la
+  résolution, d'où le flou. Le plafond passe à 1,5 en Basse et à 2 en
+  Moyenne, et la résolution dynamique descend moins bas (75 % au lieu de
+  60 % en Basse).
 - **Tone mapping** « Khronos PBR Neutral » : il respecte la vraie couleur des
   matériaux, comme une peinture de cyclo.
 - **Brouillard** calé sur la distance de vue : il masquera le chargement
@@ -327,7 +333,9 @@ mobylettes.
 
 ### Le garage
 
-- Porte de 3,4 m et dalle surélevée de 15 cm.
+- Porte de 3,4 m et dalle surélevée de 15 cm, avec une **rampe douce**
+  (1,5 m, 10 %) devant la porte : pas de marche à franchir, ni à pied ni à
+  moto.
 - Établi avec les pièces de rechange : bougie neuve, CDI débridé, pot TURBINO RX et cartouche TURBINO Carbon.
 - Étagère, et plafonnier commandé par un interrupteur. On l'éteint en
   mettant son intensité à 0, sans désactiver la lampe, pour éviter de
@@ -335,14 +343,39 @@ mobylettes.
 
 ### Son
 
-Moteur 2 temps **synthétisé en temps réel** (`vehicles/audio/EngineSound.ts`),
-sans fichier à télécharger :
-- deux oscillateurs à la fréquence d'allumage (régime / 60) ;
-- un bruit filtré pour le grésillement, puis une saturation ;
-- un filtre qui s'ouvre avec les gaz.
+Tout est **synthétisé en temps réel** (Web Audio), sans fichier à
+télécharger. C'est gratuit, léger, et le son réagit au jeu.
 
-Le volume dépend du pot. Le son démarre au premier geste du joueur (règle des
-navigateurs), et le panneau 📊 permet de le couper.
+**Réveil du son.** Les navigateurs n'autorisent le son qu'après un geste du
+joueur : il démarre au premier clic, toucher ou touche. Sur iPhone, le
+**mode silencieux** coupait tout. On demande donc une session audio
+« lecture », comme un lecteur de musique (Safari 17 et plus). Sur les iOS
+plus anciens, un son muet joué en boucle donne le même résultat.
+
+**Trois bus**, mélangés dans un volume général coupable depuis le panneau
+📊 : bruitages, moteurs, ambiance. L'onglet caché suspend le son.
+
+**Son 3D.** L'auditeur suit la caméra. Une moto au ralenti s'entend en
+s'approchant, à gauche ou à droite.
+
+| Son | Déclenché par |
+|---|---|
+| Moteur 2 temps (`EngineSound`) : allumage = régime / 60, harmoniques, grésillement, filtre qui s'ouvre avec les gaz, volume selon le pot | chaque moto, garée ou conduite |
+| Kick, pétarade au démarrage, toux si le kick rate, calage | moto |
+| Passage de vitesse (clac), grincement si on passe sans embrayer | boîte |
+| Moteur serré : crissement métallique puis choc | usure |
+| Pas (béton ou herbe selon le sol), atterrissage | joueur |
+| Prise en main, lancer, chocs des objets (métal, bois, plastique, selon la force du choc) | interaction, physique |
+| Cliquet de la clé pendant qu'on dévisse, choc métallique au démontage et au remontage | atelier |
+| Glouglou en versant (plus grave pour l'huile) | carburant |
+| Caisse enregistreuse (achat), pièces (vente), sonnette à la livraison, clic d'interface | boutique |
+| Interrupteur | garage |
+| Vent qui monte avec la vitesse, brise dehors, oiseaux de temps en temps (rien dans le garage) | ambiance |
+
+**Organisation.** Les systèmes demandent un bruitage avec l'événement
+`sfx`. `audio/SoundSystem.ts` s'occupe des sons continus (moteurs, vent,
+pas, cliquet, versement). Les recettes sont dans `audio/Sfx.ts` : bruit
+filtré, tonalités qui glissent, partiels métalliques.
 
 ## 10. Réalisme, échappement et onglet DEV (étape 4)
 
@@ -719,6 +752,8 @@ sont gratuits ; seule la publication sur les stores est payante (Google Play :
 | D37 | Consommation calculée depuis la puissance de combustion (≈ 0,75 L/kWh) | Retrouve les ≈ 3 L/100 km d'un vrai 50, et plus quand on débride |
 | D38 | Le joueur dose lui-même le mélange (affichage du % en direct) ; usure et serrage selon le graissage | Le cœur d'un jeu de mécanique 2 temps : un mauvais mélange se paie |
 | D39 | Actions maintenues continues (`tick`) pour verser | Même geste partout (maintenir Utiliser) ; on s'arrête quand on veut |
+| D40 | Bruitages synthétisés, son 3D, session audio « lecture » | Aucun fichier (budget de taille) ; le son marche même en mode silencieux sur iPhone |
+| D41 | Plafond de pixels relevé en Basse et en Moyenne | Image nette sur téléphone ; les deux profils restent sans ombres coûteuses ni reflets en Basse |
 
 ## 17. Feuille de route
 

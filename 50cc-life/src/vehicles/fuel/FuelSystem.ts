@@ -73,6 +73,8 @@ export class FuelSystem implements GameSystem {
   private readonly tanks = new Map<Bike, FuelTank>();
   private readonly containers = new Map<PhysicsBody, Container>();
   private hudTimer = 0;
+  /** Dernier versement (pour le son « glouglou »). */
+  private lastPour: { kind: ContainerKind; at: number } | null = null;
   /**
    * Action « verser » en cours : la même instance tant que le même bidon
    * vise le même bouchon (sinon l'action maintenue repartirait de zéro).
@@ -121,6 +123,11 @@ export class FuelSystem implements GameSystem {
       price: 13,
       deliver: (position) => this.spawnContainer('oil', CONTAINER_CAPACITY.oil, position),
     });
+  }
+
+  /** Ce qu'on est en train de verser (null sinon), pour le son. */
+  get pouringKind(): ContainerKind | null {
+    return this.lastPour && performance.now() - this.lastPour.at < 150 ? this.lastPour.kind : null;
   }
 
   tankOf(bike: Bike): FuelTank | undefined {
@@ -216,6 +223,7 @@ export class FuelSystem implements GameSystem {
       this.ctx.scene,
     );
     const container: Container = { kind, amount: Math.min(Math.max(amount, 0), CONTAINER_CAPACITY[kind]), mesh, aggregate };
+    this.ctx.impacts.watch(aggregate.body, 'plastic');
     this.containers.set(aggregate.body, container);
     this.ctx.interactables.register(aggregate.body, {
       get label() {
@@ -305,6 +313,7 @@ export class FuelSystem implements GameSystem {
       tick: (dt) => {
         const accepted = add(Math.min(rate * dt, c.amount));
         c.amount = Math.max(0, c.amount - accepted);
+        if (accepted > 0) this.lastPour = { kind: c.kind, at: performance.now() };
         return accepted > 1e-7 && c.amount > 0.001;
       },
       progress: fill,

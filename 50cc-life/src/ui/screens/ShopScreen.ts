@@ -38,7 +38,7 @@ export class ShopScreen {
 
   constructor(
     uiRoot: HTMLElement,
-    bus: EventBus<GameEvents>,
+    private readonly bus: EventBus<GameEvents>,
     private readonly shop: ShopSystem,
     private readonly wallet: Wallet,
     private readonly input: InputManager,
@@ -49,7 +49,10 @@ export class ShopScreen {
     const tabBar = el('div', { className: 'shop__tabs', attrs: { role: 'tablist' } });
     for (const [id, label] of [['buy', t('shop.buy')], ['sell', t('shop.sell')]] as const) {
       const button = el('button', { className: 'shop__tab', text: label, attrs: { type: 'button', role: 'tab', 'data-tab': id } });
-      button.addEventListener('click', () => this.show(id));
+      button.addEventListener('click', () => {
+        this.bus.emit('sfx', { id: 'uiClick' });
+        this.show(id);
+      });
       this.tabs.set(id, button);
       tabBar.appendChild(button);
     }

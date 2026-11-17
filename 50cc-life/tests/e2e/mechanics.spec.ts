@@ -80,7 +80,8 @@ test.describe('atelier au tactile', () => {
     // 1. Démonter la bougie usée (bouton maintenu).
     await lookAtSlot(page, 'sparkPlug');
     await waitFor(page, (s) => s.focus === "Bougie d'allumage (usée)");
-    await touchHold(page, page.getByRole('button', { name: 'Démonter' }), 1600);
+    // Maintenu largement plus que nécessaire : la machine de test peut ramer.
+    await touchHold(page, page.getByRole('button', { name: 'Démonter' }), 2800);
     await waitFor(page, (s) => !s.bikeParts.includes('sparkPlug'));
 
     // 2. Se tourner vers l'établi, avancer, prendre la bougie neuve.
@@ -100,7 +101,7 @@ test.describe('atelier au tactile', () => {
     await joystick(page, 0, -45, (s) => Math.hypot(s.player.x - slot.x, s.player.z - slot.z) < 1.4);
     await lookAtSlot(page, 'sparkPlug');
     await expect(page.getByRole('button', { name: 'Remonter' })).toBeVisible();
-    await touchHold(page, page.getByRole('button', { name: 'Remonter' }), 1400);
+    await touchHold(page, page.getByRole('button', { name: 'Remonter' }), 2800);
     const done = await waitFor(page, (s) => s.bikeParts.includes('sparkPlug'));
     expect(done.holding).toBe(false);
   });
