@@ -28,8 +28,10 @@ import type { GameContext, GameSystem } from '../app/GameContext';
 import type { Interactable } from '../core/interaction/Interactable';
 import { t } from '../ui/i18n';
 import { createEnvironment, type WorldEnvironment } from './environment/environment';
+import { SQUARE_RADIUS, STATION, VILLAGE_SQUARE, distanceToRoadEdge } from './map/mapData';
 
-const GROUND_SIZE = 400;
+/** Sol : toute la carte du monde ouvert (± 1 200 m) et une marge. */
+const GROUND_SIZE = 2600;
 const CRATE_SIZE = 0.8;
 /** Au-delà, les plus anciennes caisses sont supprimées (mémoire maîtrisée). */
 const MAX_CRATES = 60;
@@ -80,6 +82,10 @@ export const TELEPORT_POINTS: ReadonlyArray<{ readonly id: string; readonly labe
   { id: 'computer', label: 'Ordinateur (boutique)', position: new Vector3(2.5, 0.15, 11.3), yaw: Math.PI / 2 },
   { id: 'road', label: "Route d'essai", position: new Vector3(-14, 0, -12), yaw: 0 },
   { id: 'hill-foot', label: 'Pied de la colline', position: new Vector3(HILL.x, 0, -12), yaw: 0 },
+  { id: 'station', label: 'Station-service', position: new Vector3(STATION.x - 3, 0, STATION.z + 16), yaw: Math.PI },
+  { id: 'village', label: 'Village (place de l’église)', position: new Vector3(VILLAGE_SQUARE[0] - 6, 0, VILLAGE_SQUARE[1]), yaw: Math.PI / 2 },
+  { id: 'd50-west', label: 'D50 (ouest)', position: new Vector3(-400, 0, -17), yaw: Math.PI / 2 },
+  { id: 'loop-north', label: 'Route des Bois (nord)', position: new Vector3(300, 0, 696), yaw: -Math.PI / 2 },
   { id: 'hill-top', label: 'Sommet de la colline', position: new Vector3(HILL.x, HILL.height, HILL.zStart + HILL.rampLength + 4), yaw: 0 },
 ];
 
@@ -97,6 +103,9 @@ export function surfaceAt(x: number, z: number): 'hard' | 'grass' {
   if (Math.abs(x - GARAGE.x) < GARAGE.doorWidth / 2 + 0.3 && z > GARAGE.z - 4.6 && z <= GARAGE.z - 3) return 'hard'; // rampe
   if (Math.abs(x - ROAD.x) < ROAD.width / 2 && z > ROAD.zStart && z < ROAD.zEnd) return 'hard';
   if (Math.abs(x - HILL.x) < HILL.width / 2 && z > HILL.zStart && z < HILL.zStart + 2 * HILL.rampLength + HILL.plateau) return 'hard';
+  if (Math.abs(x - STATION.x) < 23 && Math.abs(z - (STATION.z + 4)) < 15) return 'hard'; // piste de la station
+  if (distanceToRoadEdge(x, z) < 0) return 'hard';
+  if (Math.hypot(x - VILLAGE_SQUARE[0], z - VILLAGE_SQUARE[1]) < SQUARE_RADIUS) return 'hard'; // place pavée
   return 'grass';
 }
 
@@ -191,7 +200,7 @@ export class TestWorld implements GameSystem {
   private createGround(): void {
     const ground = CreateGround('ground', { width: GROUND_SIZE, height: GROUND_SIZE }, this.scene);
     const mat = new PBRMaterial('ground', this.scene);
-    mat.albedoTexture = createCheckerTexture(this.scene, GROUND_SIZE / 4);
+    mat.albedoTexture = createGrassTexture(this.scene, GROUND_SIZE / 6);
     mat.metallic = 0;
     mat.roughness = 0.95;
     const profile = this.ctx.quality.profile.id;
@@ -489,25 +498,38 @@ function createRoadTexture(scene: Scene, repeat: number): DynamicTexture {
   return tex;
 }
 
-/** Damier généré en mémoire (aucun fichier à télécharger). */
-function createCheckerTexture(scene: Scene, repeat: number): DynamicTexture {
+/** Herbe générée en mémoire : brins et taches de couleur, sans motif visible de près. */
+function createGrassTexture(scene: Scene, repeat: number): DynamicTexture {
   const size = 256;
-  const tex = new DynamicTexture('checker', { width: size, height: size }, scene, true);
-  const ctx = tex.getContext();
-  const half = size / 2;
-  ctx.fillStyle = '#5d6b4c';
+  const tex = new DynamicTexture('grass', { width: size, height: size }, scene, true);
+  const ctx = tex.getContext() as CanvasRenderingContext2D;
+  ctx.fillStyle = '#56653f';
   ctx.fillRect(0, 0, size, size);
-  ctx.fillStyle = '#56644a';
-  ctx.fillRect(0, 0, half, half);
-  ctx.fillRect(half, half, half, half);
-  ctx.strokeStyle = 'rgba(0,0,0,0.12)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(0, 0, size, size);
+  // Taches douces (variations de couleur).
+  for (let i = 0; i < 40; i++) {
+    const r = 10 + Math.random() * 30;
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+    const tone = Math.random() < 0.5 ? 'rgba(74,92,48,0.5)' : 'rgba(104,112,62,0.45)';
+    g.addColorStop(0, tone);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.save();
+    ctx.translate(Math.random() * size, Math.random() * size);
+    ctx.fillStyle = g;
+    ctx.fillRect(-r, -r, 2 * r, 2 * r);
+    ctx.restore();
+  }
+  // Brins.
+  for (let i = 0; i < 2600; i++) {
+    const shade = 70 + Math.floor(Math.random() * 60);
+    ctx.fillStyle = `rgb(${Math.floor(shade * 0.7)},${shade},${Math.floor(shade * 0.45)})`;
+    ctx.fillRect(Math.random() * size, Math.random() * size, 1, 2 + Math.random() * 2);
+  }
   tex.update();
   tex.uScale = repeat;
   tex.vScale = repeat;
   return tex;
 }
+
 
 /** Écran de l'ordinateur : page d'accueil de la boutique (texture dessinée). */
 function shopScreenMaterial(scene: Scene): PBRMaterial {

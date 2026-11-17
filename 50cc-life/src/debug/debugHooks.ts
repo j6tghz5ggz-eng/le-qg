@@ -42,6 +42,8 @@ export interface DebugHooks {
   readonly shopOpen: boolean;
   /** Nombre de bruitages demandés depuis le démarrage. */
   readonly sfxCount: number;
+  /** Morceaux du monde ouvert chargés autour du joueur. */
+  readonly loadedChunks: number;
   slotPosition(slot: string): { x: number; y: number; z: number } | null;
   /** Pièces posées dans le monde. */
   looseParts(): Array<{ name: string; x: number; y: number; z: number }>;

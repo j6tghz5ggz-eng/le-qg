@@ -38,7 +38,12 @@ export async function waitFor(page: Page, done: (s: State) => boolean, timeout =
   }
 }
 
-export async function holdKeys(page: Page, keys: string[], done: (s: State) => boolean, timeout?: number): Promise<State> {
+/**
+ * Touches maintenues jusqu'à la condition. Délai large par défaut : en rendu
+ * logiciel (CI, plusieurs tests en parallèle) le jeu tourne à quelques images
+ * par seconde et la physique (pas fixe plafonné) avance moins vite que l'horloge.
+ */
+export async function holdKeys(page: Page, keys: string[], done: (s: State) => boolean, timeout = 45_000): Promise<State> {
   for (const k of keys) await page.keyboard.down(k);
   try {
     return await waitFor(page, done, timeout);

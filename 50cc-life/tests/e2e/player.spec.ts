@@ -13,7 +13,7 @@ const player = (page: Page) => page.evaluate(() => window.__50CC__!.player);
 type PlayerInfo = Awaited<ReturnType<typeof player>>;
 
 /** Maintient une touche jusqu'à ce que la condition soit vraie (piloté par la position, pas par le temps). */
-async function holdUntil(page: Page, key: string, done: (p: PlayerInfo) => boolean, timeout = 15_000): Promise<PlayerInfo> {
+async function holdUntil(page: Page, key: string, done: (p: PlayerInfo) => boolean, timeout = 45_000): Promise<PlayerInfo> {
   await page.keyboard.down(key);
   const start = Date.now();
   try {

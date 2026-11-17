@@ -6,7 +6,7 @@ première personne. Inspirations : My Summer Car, Mon Bazou.
 **Babylon.js · Havok · TypeScript · Vite** : 100 % gratuit, fonctionne dans le
 navigateur sur PC, Android et iOS.
 
-> État : **étape 6** (essence, huile et usure).
+> État : **étape 7** (monde ouvert).
 >
 > - Le supermotard détaillé (VARONE SMX 50, marque fictive) a une boîte 6
 >   vitesses, un embrayage, il peut caler et démarre au kick.
@@ -27,6 +27,11 @@ navigateur sur PC, Android et iOS.
 > - Usure des pièces en roulant ; sans huile, le moteur serre.
 > - Sons synthétisés en 3D : moteur, kick, vitesses, pas, atelier, versement,
 >   boutique, vent et oiseaux.
+> - Monde ouvert de 2,4 km chargé par morceaux autour du joueur : la D50, le
+>   chemin du garage, une boucle de campagne de 2,4 km, des forêts, le
+>   village de Villebois (église, place pavée et fontaine, une soixantaine
+>   de maisons) et la station-service PÉTRO'VAL, où le plein se paie au litre
+>   (noms fictifs).
 
 ## Démarrer
 
@@ -77,6 +82,7 @@ Ouvrez cette adresse sur le téléphone.
 | **Démonter / remonter une pièce** | **maintenir E** en visant la pièce (ou en portant la pièce près de son emplacement) | maintenir le bouton contextuel | maintenir Y |
 | Boutique (ordinateur du garage) | E en visant l'ordinateur, Échap pour fermer | Ouvrir la boutique | Y |
 | Faire le plein / verser l'huile | porter le jerrican ou le bidon près du bouchon, **maintenir E** | maintenir le bouton contextuel | maintenir Y |
+| Plein à la station (payant) | moto garée près de la pompe, viser la pompe, **maintenir E** | maintenir le bouton contextuel | maintenir Y |
 
 ### Sur le supermotard (boîte manuelle)
 
@@ -97,7 +103,8 @@ tactile, réglable dans le panneau 📊.
 
 - **Infos** : statistiques, qualité graphique, réglages.
 - **DEV** : triches pour tester. On y trouve l'argent, la téléportation
-  (garage, route, colline…), la moto (ramener, démarrage instantané, moteur
+  (garage, route, colline, station-service, village, D50, Route des Bois ;
+  « Moto garée à la pompe »), la moto (ramener, démarrage instantané, moteur
   DEV), la mécanique (pièce neuve du catalogue, kit débridage, moteur
   d'origine, tout à neuf) et la marche rapide. Le raccourci **B** lâche une
   caisse.

@@ -245,6 +245,19 @@ function paintVertices(mesh: Mesh, color: Color3): void {
  * Collecte les morceaux d'un modèle par surface, puis les fusionne : un
  * maillage par matériau (réel) et par nœud parent.
  */
+/** Incruste la transformation monde dans les sommets (comme Mesh.MergeMeshes). */
+function bakeWorld(mesh: Mesh): void {
+  const world = mesh.computeWorldMatrix(true).clone();
+  mesh.parent = null;
+  mesh.position.setAll(0);
+  mesh.rotationQuaternion = null;
+  mesh.rotation.setAll(0);
+  mesh.scaling.setAll(1);
+  mesh.bakeTransformIntoVertices(world);
+  mesh.refreshBoundingInfo();
+  for (const subMesh of mesh.subMeshes ?? []) subMesh.refreshBoundingInfo();
+}
+
 export class MeshBin<K extends string> {
   private readonly pieces = new Map<K, Mesh[]>();
 
@@ -267,10 +280,15 @@ export class MeshBin<K extends string> {
     }
     const out: Mesh[] = [];
     for (const [material, group] of byMaterial) {
-      const merged = group.meshes.length > 1 ? Mesh.MergeMeshes(group.meshes, true, true) : group.meshes[0];
+      const single = group.meshes.length === 1;
+      const merged = single ? group.meshes[0] : Mesh.MergeMeshes(group.meshes, true, true);
       if (!merged) continue;
       merged.name = `${prefix}-${group.name}`;
       merged.material = material;
+      // Pièce seule : traitée comme une fusion (transformation monde incrustée
+      // dans les sommets). Sans cela elle revenait à sa position locale
+      // (bug : boutique de la station dessinée à l'origine, devant le garage).
+      if (single) bakeWorld(merged);
       merged.parent = parent;
       out.push(merged);
     }

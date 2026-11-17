@@ -63,7 +63,7 @@ presque chaque semaine : on met à jour volontairement, tous les paquets
 ├── index.html                 entrée du jeu (canvas + couche UI)
 ├── package.json · tsconfig*.json · vite.config.ts · playwright.config.ts
 ├── public/                    fichiers servis tels quels (icône, puis assets optimisés)
-├── assets-src/                sources lourdes : HORS GIT (voir § 13)
+├── assets-src/                sources lourdes : HORS GIT (voir § 14)
 ├── tools/check-sizes.mjs      budgets de taille
 ├── .githooks/pre-commit       refuse les fichiers de plus de 10 Mo
 ├── docs/ARCHITECTURE.md       ce document
@@ -96,13 +96,14 @@ presque chaque semaine : on met à jour volontairement, tous les paquets
     │   ├── simulation/        boîte manuelle, embrayage auto, variateur (TS pur, testé)
     │   └── audio/             son moteur 2 temps synthétisé
     ├── audio/                 bruitages synthétisés (Sfx) et chef d'orchestre du son (SoundSystem)
-    ├── world/                 environnement (ciel, reflets, lumière, ombres), scène de test
+    ├── world/                 environnement (ciel, reflets, lumière, ombres), garage et zone d'essai
+    │   └── map/               monde ouvert : données de la carte (pur), morceaux chargés autour du joueur, station-service
     ├── debug/                 panneau (Infos / DEV), registre des triches, API pour les tests
     └── ui/                    écrans et HUD HTML/CSS, commandes tactiles, textes (i18n)
 ```
 
-Dossiers prévus aux étapes suivantes : `core/assets/`, `world/streaming/`,
-`inventory/`, `data/` (catalogues en données).
+Dossiers prévus aux étapes suivantes : `core/assets/`, `inventory/`, `data/`
+(catalogues en données).
 
 ## 5. Boucle de jeu : pas fixe à 60 Hz
 
@@ -627,7 +628,97 @@ Elle contient en plus les niveaux d'essence et d'huile de la moto, ainsi que
 les jerricans et bidons posés dans le monde. Une sauvegarde de version 1
 est relue avec les niveaux de départ.
 
-## 13. Stockage gratuit : ce qui va où
+## 13. Monde ouvert (étape 7)
+
+### La carte (`world/map/mapData.ts`, pur et testé)
+
+- Carte de **2,4 km de côté** (± 1 200 m) autour du garage, sur le sol
+  d'herbe. Tout est décrit en données : routes (suite de points + largeur),
+  bâtiments, panneaux, station, place du village.
+- **Routes** : la D50 (est-ouest, 7 m), le chemin du garage qui la rejoint,
+  la « Route des Bois », une boucle de campagne d'environ 2,4 km, et trois
+  rues dans le village.
+- **Villebois** (village fictif) : église, grange, une soixantaine de
+  maisons placées le long des rues (façade vers la rue, recul, terrains
+  vides au hasard). Les maisons qui tomberaient sur une route, sur une autre
+  maison ou sur la **place pavée** (fontaine au centre) sont écartées.
+- **Arbres** : forêts et bosquets générés **au hasard mais à graine**
+  (mulberry32). Un même morceau donne toujours les mêmes arbres, sans rien
+  stocker. Jamais à moins de 4 m d'une route, ni près du garage, du village
+  ou de la station.
+- Les tests vérifient que les routes, les maisons, les arbres et les
+  **points de téléportation** tombent bien (aucune téléportation dans une
+  maison, contre un arbre ou dans la fontaine).
+
+### Chargement progressif (`world/map/WorldMap.ts`)
+
+**Problème.** Construire d'un coup tous les arbres et maisons de 2,4 km
+ferait ramer un téléphone et remplirait sa mémoire.
+
+**Solution.** La carte est découpée en **morceaux de 128 m**. Seuls ceux
+autour du joueur existent :
+
+- rayon de chargement = distance de vue du profil, plafonnée à 300 m
+  (au-delà, tout est dans le brouillard), plus 20 m ;
+- **un morceau par image au plus**, le plus proche manquant d'abord, et
+  construit après le rendu de l'image : pas d'à-coup ;
+- un morceau est détruit quand il sort du rayon plus une marge de 128 m, ce
+  qui évite de reconstruire en boucle à la limite.
+
+Dans un morceau :
+
+- **Arbres en instances fines** (*thin instances*) : un seul appel de dessin
+  par type d'arbre (chêne, bouleau, sapin) pour des centaines d'arbres ; les
+  couleurs sont peintes sur les sommets.
+- **Bâtiments fusionnés par matériau** (`MeshBin`) : murs, toits,
+  menuiseries… quelques appels de dessin pour tout le morceau. La façade est
+  une texture générée (enduit, fenêtres à volets) répétée tous les 6 m et
+  par étage, droite aussi sur les pignons.
+- **Un seul corps physique statique** composé (troncs + murs) par morceau.
+
+Les routes (un seul maillage pour toute la carte), les panneaux, la place
+du village et la station sont légers et restent toujours chargés.
+
+**Pourquoi pas d'origine flottante ?** À 1 200 m de l'origine, la précision
+des nombres 32 bits du GPU est d'environ 0,1 mm : aucun tremblement visible.
+On la mettra en place si la carte dépasse quelques kilomètres.
+
+**Deux pièges trouvés en route** (gardés en commentaire dans le code) :
+
+- Babylon range les **matrices des instances fines dans la géométrie**.
+  Partager la géométrie d'un modèle d'arbre entre morceaux faisait
+  disparaître tous les arbres dès qu'un morceau lointain était déchargé.
+  Chaque morceau a donc sa propre copie (quelques centaines de sommets).
+- `MeshBin` : une pièce seule sur son matériau (pas de fusion) perdait sa
+  position. La boutique de la station était dessinée à l'origine, devant le
+  garage, et coûtait 40 % des images en rendu logiciel. Une pièce seule est
+  désormais traitée comme une fusion (transformation incrustée).
+
+### Station-service PÉTRO'VAL (nom fictif)
+
+- Au bord de la D50, avant le village : piste en béton, auvent, deux pompes
+  SP95 avec afficheur, boutique, totem visible de loin.
+- **Faire le plein** : garez la moto à moins de 5 m d'une pompe, visez la
+  pompe et **maintenez Utiliser**. Le réservoir se remplit (0,5 L/s) et
+  chaque litre est payé **1,85 €**. L'argent est débité euro par euro ; les
+  centimes restants sont reportés au plein suivant. Sans argent, la pompe
+  s'arrête.
+- On peut aussi remplir un **jerrican** en le tenant près de la pompe.
+- Présentoir devant la boutique : huile 2T (13 €) et jerrican plein (10 €).
+
+### Panneaux
+
+Entrées et sorties de Villebois (nom barré à la sortie), limitation à
+50 km/h, totem de la station. Tous dessinés en code (textures générées).
+
+### Onglet DEV
+
+- **Téléportation** : station-service, village (place de l'église), D50
+  ouest, Route des Bois (nord).
+- **⛽ Moto garée à la pompe** : la moto à portée du tuyau, le joueur face à
+  la pompe (sert aussi au test automatique).
+
+## 14. Stockage gratuit : ce qui va où
 
 Le principe : **Git ne contient que des fichiers légers.** Pas de Git LFS,
 dont le quota gratuit (stockage et bande passante mensuelle) s'épuise vite,
@@ -666,7 +757,7 @@ Opus) et instanciation.
    une fois avec `npm run hooks:install`.
 3. La CI échoue si un budget est dépassé.
 
-## 14. Hébergement gratuit (à mettre en place plus tard)
+## 15. Hébergement gratuit (à mettre en place plus tard)
 
 | Hébergeur | Points clés |
 |---|---|
@@ -679,7 +770,7 @@ gratuite), puis **Capacitor** pour des applications Android/iOS. Les outils
 sont gratuits ; seule la publication sur les stores est payante (Google Play :
 25 $ une fois ; App Store : 99 $/an et un Mac).
 
-## 15. Tests et intégration continue
+## 16. Tests et intégration continue
 
 - **Unitaires (Vitest)** : modules purs (bus d'événements, résolution
   dynamique, détection GPU, choix du profil…).
@@ -709,7 +800,7 @@ sont gratuits ; seule la publication sur les stores est payante (Google Play :
   performance se font **sur de vrais appareils** : PC, Android d'entrée ou de
   milieu de gamme, iPhone.
 
-## 16. Journal des décisions
+## 17. Journal des décisions
 
 | # | Décision | Raison |
 |---|---|---|
@@ -754,8 +845,13 @@ sont gratuits ; seule la publication sur les stores est payante (Google Play :
 | D39 | Actions maintenues continues (`tick`) pour verser | Même geste partout (maintenir Utiliser) ; on s'arrête quand on veut |
 | D40 | Bruitages synthétisés, son 3D, session audio « lecture » | Aucun fichier (budget de taille) ; le son marche même en mode silencieux sur iPhone |
 | D41 | Plafond de pixels relevé en Basse et en Moyenne | Image nette sur téléphone ; les deux profils restent sans ombres coûteuses ni reflets en Basse |
+| D42 | Carte décrite en données pures, arbres générés à graine | Testable sans navigateur ; rien à télécharger ni à stocker pour des milliers d'arbres |
+| D43 | Morceaux de 128 m chargés autour du joueur, un par image, après le rendu | Mémoire et temps d'image maîtrisés sur mobile ; pas d'à-coup en roulant |
+| D44 | Instances fines avec une géométrie par morceau ; bâtiments fusionnés par matériau | Peu d'appels de dessin ; décharger un morceau n'efface pas les autres |
+| D45 | Pas d'origine flottante pour une carte de 2,4 km | Précision de 0,1 mm au bord : inutile pour l'instant |
+| D46 | Plein à la pompe payé au litre, débité euro par euro | Même geste que le jerrican (maintenir Utiliser) ; on s'arrête quand on veut |
 
-## 17. Feuille de route
+## 18. Feuille de route
 
 0. ✅ **Fondations** : moteur, physique, boucle, profils de qualité, stats, tests, CI.
 1. ✅ **Joueur** : déplacement à la première personne, commandes clavier/souris, tactile et manette, prendre, porter et lancer.
@@ -764,7 +860,7 @@ sont gratuits ; seule la publication sur les stores est payante (Google Play :
 4. ✅ **Réalisme et outils de test** : bridage réaliste, pot passage haut + cartouche, marques fictives, moto détaillée, reflets, onglet DEV, argent, colline d'essai.
 5. ✅ **Boutique et sauvegarde** : ordinateur du garage, achat livré sur palette, revente selon l'état, sauvegarde automatique.
 6. ✅ **Essence, huile et usure** : réservoirs des vrais modèles, mélange dosé par le joueur, graissage séparé, panne sèche, usure, moteur serré.
-7. **Monde ouvert** (streaming des morceaux + origine flottante) : routes, village, station-service.
+7. ✅ **Monde ouvert** : carte de 2,4 km chargée par morceaux, D50 et boucle de campagne, village de Villebois, station-service avec pompe payante.
 8. **Gagner sa vie** : livraisons en 50, réparations pour les voisins, achat d'épaves à démonter.
 9. **Outils** : clés de différentes tailles, robinet de réserve, chaîne à régler.
 10. Ensuite : vrais modèles 3D (proportions exactes), audio, PWA, Capacitor, contenu.

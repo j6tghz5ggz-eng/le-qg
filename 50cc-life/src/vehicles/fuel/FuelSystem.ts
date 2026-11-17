@@ -32,6 +32,19 @@ import { FuelTank, type FuelLevels } from './FuelTank';
 
 export type ContainerKind = 'jerrican' | 'oil';
 
+/** Pompes d'une station-service (le plein se paie au litre). */
+export interface StationPumps {
+  readonly pumps: readonly Vector3[];
+  readonly pricePerLiter: number;
+  /** Paie (euros entiers) ; faux si le solde ne suffit pas. */
+  pay(euros: number): boolean;
+}
+
+/** Débit d'une pompe à essence (L/s). */
+const PUMP_RATE = 0.5;
+/** Distance max entre la pompe et la moto à remplir (m). */
+const PUMP_REACH = 5;
+
 export interface SavedContainer {
   readonly kind: ContainerKind;
   /** Contenu (L). */
@@ -80,6 +93,9 @@ export class FuelSystem implements GameSystem {
    * vise le même bouchon (sinon l'action maintenue repartirait de zéro).
    */
   private pourCache: { readonly container: Container; readonly key: string; readonly action: HoldAction } | null = null;
+  private station: StationPumps | null = null;
+  /** Reste à payer (fraction d'euro) du plein en cours. */
+  private owed = 0;
   private readonly materials = new Map<string, PBRMaterial>();
 
   constructor(
@@ -103,6 +119,80 @@ export class FuelSystem implements GameSystem {
     this.vehicles.detailProvider = (bike) => this.summary(bike);
     for (const c of this.starting) this.spawnContainer(c.kind, c.amount, c.position);
     this.registerCheats();
+  }
+
+  /** Branche une station-service (pompes payantes). */
+  attachStation(station: StationPumps): void {
+    this.station = station;
+  }
+
+  /**
+   * Action « Faire le plein » d'une pompe : remplit la moto la plus proche
+   * (garée à côté), en payant au fur et à mesure.
+   */
+  pumpAction(pump: Vector3): HoldAction | null {
+    const station = this.station;
+    if (!station) return null;
+    let best: Bike | null = null;
+    let bestDistance = PUMP_REACH;
+    for (const bike of this.tanks.keys()) {
+      const d = Vector3.Distance(bike.position, pump);
+      if (d < bestDistance) {
+        best = bike;
+        bestDistance = d;
+      }
+    }
+    if (!best) return null;
+    const bike = best;
+    const tank = (): FuelTank => this.tanks.get(bike)!;
+    return this.paidPour(
+      station,
+      (l) => tank().addFuel(l),
+      () => tank().volume / tank().spec.tankLiters,
+      () => this.fuelDetail(tank()),
+      () => (tank().space <= 0.001 ? t('fuel.tankFull') : null),
+    );
+  }
+
+  /** Remplissage payant (pompe → moto ou jerrican). */
+  private paidPour(
+    station: StationPumps,
+    add: (liters: number) => number,
+    fill: () => number,
+    detail: () => string,
+    blocker: () => string | null,
+  ): HoldAction {
+    let spent = 0;
+    return {
+      label: `${t('fuel.pourFuel')} (${station.pricePerLiter.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €/L)`,
+      get detail() {
+        return `${detail()} · ${spent.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+      },
+      seconds: 1,
+      blocker: () => {
+        const reason = blocker();
+        if (!reason) spent = 0; // nouveau plein : compteur remis à zéro
+        return reason;
+      },
+      tick: (dt) => {
+        const liters = add(PUMP_RATE * dt);
+        if (liters <= 0) return false;
+        this.lastPour = { kind: 'jerrican', at: performance.now() };
+        const cost = liters * station.pricePerLiter;
+        spent += cost;
+        this.owed += cost;
+        while (this.owed >= 1) {
+          if (!station.pay(1)) {
+            this.ctx.bus.emit('ui:notice', { message: t('shop.tooExpensive') });
+            return false;
+          }
+          this.owed -= 1;
+        }
+        return true;
+      },
+      progress: fill,
+      complete: () => {},
+    };
   }
 
   /** Branche les produits sur la boutique (jerrican, huile). */
@@ -257,6 +347,27 @@ export class FuelSystem implements GameSystem {
 
   private findPour(c: Container): { key: string; create: () => HoldAction } | null {
     const position = c.mesh.getAbsolutePosition();
+    const station = this.station;
+    if (station && c.kind === 'jerrican') {
+      const pumpIndex = station.pumps.findIndex((p) => Vector3.Distance(p, position) < 1.4);
+      if (pumpIndex >= 0) {
+        return {
+          key: `pump${pumpIndex}`,
+          create: () =>
+            this.paidPour(
+              station,
+              (l) => {
+                const accepted = Math.min(l, CONTAINER_CAPACITY.jerrican - c.amount);
+                c.amount += accepted;
+                return accepted;
+              },
+              () => c.amount / CONTAINER_CAPACITY.jerrican,
+              () => `${t('fuel.jerrican')} ${liters(c.amount)} / ${liters(CONTAINER_CAPACITY.jerrican)}`,
+              () => (c.amount >= CONTAINER_CAPACITY.jerrican - 0.001 ? t('fuel.containerFull') : null),
+            ),
+        };
+      }
+    }
     let index = 0;
     for (const [bike, tank] of this.tanks) {
       index++;

@@ -38,6 +38,9 @@ import { ShopScreen } from '../ui/screens/ShopScreen';
 import { SaveSystem } from '../save/SaveSystem';
 import { FuelSystem } from '../vehicles/fuel/FuelSystem';
 import { SoundSystem } from '../audio/SoundSystem';
+import { WorldMap } from '../world/map/WorldMap';
+import { GasStation } from '../world/map/GasStation';
+import { STATION } from '../world/map/mapData';
 import { MechanicsSystem } from '../mechanics/MechanicsSystem';
 import { SM50 } from '../vehicles/bike/specs';
 import { VehicleSystem } from '../vehicles/VehicleSystem';
@@ -126,6 +129,8 @@ export class Game {
       const shop = new ShopSystem(economy.wallet, mechanics, { deliverySpot: DELIVERY_SPOT, sellArea: GARAGE_BOUNDS });
       fuel.attachShop(shop);
       const save = new SaveSystem({ economy, player, vehicles, mechanics, shop, fuel });
+      const worldMap = new WorldMap(player, () => world.environment);
+      const station = new GasStation(fuel, economy.wallet, () => world.environment);
       sounds.attach({ player, vehicles, interaction, fuel, surfaceAt, isIndoors });
       // Ordre important : le monde, le joueur (caméra), les véhicules, la
       // mécanique (fantôme de remontage), puis l'interaction (rayon depuis
@@ -135,8 +140,10 @@ export class Game {
       await this.addSystem(world, ctx);
       await this.addSystem(economy, ctx);
       await this.addSystem(player, ctx);
+      await this.addSystem(worldMap, ctx);
       await this.addSystem(vehicles, ctx);
       await this.addSystem(fuel, ctx);
+      await this.addSystem(station, ctx);
       await this.addSystem(mechanics, ctx);
       await this.addSystem(shop, ctx);
       await this.addSystem(interaction, ctx);
@@ -178,6 +185,20 @@ export class Game {
           },
         });
       }
+      ctx.cheats.add('Téléportation', {
+        kind: 'action',
+        id: 'station-park',
+        label: '⛽ Moto garée à la pompe',
+        run: () => {
+          if (vehicles.current) return;
+          // Moto le long de la pompe 1 (à portée du tuyau), joueur face à la pompe.
+          const [px, pz] = STATION.pumps[0]!;
+          const bike = vehicles.bikes[0];
+          if (bike) vehicles.place(bike, new Vector3(px - 2.6, 0.05, pz + 1.2), 0);
+          player.teleport(new Vector3(px, 0, pz + 2.2), Math.PI);
+          this.bus.emit('ui:notice', { message: `${t('cheat.teleported')} : ${t('object.pump')}` });
+        },
+      });
       new DebugOverlay(
         ctx,
         () => {
@@ -278,6 +299,9 @@ export class Game {
         get sfxCount() {
           return sounds.played;
         },
+        get loadedChunks() {
+          return worldMap.loadedChunks;
+        },
         slotPosition: (slot: string) => {
           const p = mechanics.slotWorldPosition(slot);
           return p ? { x: p.x, y: p.y, z: p.z } : null;
@@ -289,7 +313,7 @@ export class Game {
           return bike ? { x: bike.position.x, y: bike.position.y, z: bike.position.z, lean: bike.leanAngle } : null;
         },
         probeY: () => world.probeY(),
-      }, { scene, engine, player, vehicles, interaction, world, input, mechanics, economy, shop, save, fuel, sounds, audio, cheats: ctx.cheats });
+      }, { scene, engine, player, vehicles, interaction, world, input, mechanics, economy, shop, save, fuel, sounds, audio, worldMap, cheats: ctx.cheats });
 
       this.loop.start();
       this.setState('playing');
