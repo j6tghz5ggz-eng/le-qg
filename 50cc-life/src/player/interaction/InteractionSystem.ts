@@ -175,6 +175,16 @@ export class InteractionSystem implements GameSystem {
       }
       this.holding = { action, progress: 0 };
     }
+    if (action.tick) {
+      // Action continue : tant que la touche est maintenue.
+      const going = action.tick(dt);
+      this.holding.progress = action.progress?.() ?? 0;
+      if (!going) {
+        this.holding = null;
+        action.complete();
+      }
+      return;
+    }
     this.holding.progress += dt / Math.max(action.seconds, 0.05);
     if (this.holding.progress >= 1) {
       this.holding = null;
@@ -303,8 +313,8 @@ export class InteractionSystem implements GameSystem {
         holding: true,
         useLabel: action?.label ?? null,
         hold: action !== null,
-        detail: action?.detail ?? null,
-        progress,
+        detail: action?.detail ?? this.held.item.detail ?? null,
+        progress: this.holding && action?.progress ? Math.min(action.progress(), 1) : progress,
       };
     } else if (this.focus) {
       const { item, mass, body } = this.focus;
@@ -317,8 +327,8 @@ export class InteractionSystem implements GameSystem {
         holding: false,
         useLabel: action?.label ?? instantUse,
         hold: action !== null,
-        detail: action?.detail ?? null,
-        progress,
+        detail: action?.detail ?? item.detail ?? null,
+        progress: this.holding && action?.progress ? Math.min(action.progress(), 1) : progress,
       };
     }
     const key = `${focus.label}|${focus.canGrab}|${focus.tooHeavy}|${focus.holding}|${focus.useLabel}|${focus.detail}|${focus.progress.toFixed(2)}`;

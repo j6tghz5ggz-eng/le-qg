@@ -56,6 +56,12 @@ export const SPARE_PART_SPOTS = [
 /** Bureau avec l'ordinateur (boutique en ligne), contre le mur droit du garage. */
 export const COMPUTER_DESK = { x: 3.5, z: 11.3, height: 0.75 } as const;
 
+/** Jerrican et bidon d'huile de départ : au fond du garage, et sur l'étagère. */
+export const CONTAINER_SPOTS = {
+  jerrican: new Vector3(-3.3, 0.35, 14.2),
+  oil: new Vector3(2.55, 1.45, 13.9),
+} as const;
+
 /** Palette où arrivent les colis (pièces achetées), près de la porte. */
 export const DELIVERY_SPOT = new Vector3(2.55, 0.15 + 0.12, 9.85);
 

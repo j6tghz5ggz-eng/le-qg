@@ -243,6 +243,11 @@ export const PARTS: readonly PartDefinition[] = [
   },
 ];
 
+/** Nom féminin (la culasse, la bougie, la cartouche) : accord de « usée », « neuve ». */
+export function isFeminine(def: PartDefinition): boolean {
+  return def.category === 'head' || def.category === 'sparkPlug' || def.category === 'silencer';
+}
+
 export type PartCatalog = ReadonlyMap<string, PartDefinition>;
 
 export const PART_CATALOG: PartCatalog = new Map(PARTS.map((part) => [part.id, part]));

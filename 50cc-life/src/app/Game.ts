@@ -29,13 +29,14 @@ import { t } from '../ui/i18n';
 import { showFatalError } from '../ui/screens/ErrorScreen';
 import { LoadingScreen } from '../ui/screens/LoadingScreen';
 import { showToast } from '../ui/screens/Toast';
-import { BIKE_SPAWN, DELIVERY_SPOT, GARAGE_BOUNDS, PLAYER_SPAWN, SPARE_PART_SPOTS, TELEPORT_POINTS, TestWorld } from '../world/TestWorld';
+import { BIKE_SPAWN, CONTAINER_SPOTS, DELIVERY_SPOT, GARAGE_BOUNDS, PLAYER_SPAWN, SPARE_PART_SPOTS, TELEPORT_POINTS, TestWorld } from '../world/TestWorld';
 import { CheatRegistry } from '../debug/CheatRegistry';
 import { EconomySystem } from '../economy/EconomySystem';
 import { MoneyHud } from '../ui/hud/MoneyHud';
 import { ShopSystem } from '../economy/ShopSystem';
 import { ShopScreen } from '../ui/screens/ShopScreen';
 import { SaveSystem } from '../save/SaveSystem';
+import { FuelSystem } from '../vehicles/fuel/FuelSystem';
 import { MechanicsSystem } from '../mechanics/MechanicsSystem';
 import { SM50 } from '../vehicles/bike/specs';
 import { VehicleSystem } from '../vehicles/VehicleSystem';
@@ -109,14 +110,19 @@ export class Game {
         { spec: SM50, position: BIKE_SPAWN.position, yaw: BIKE_SPAWN.yaw },
       ]);
       const shadows = { addShadowCaster: (m: Parameters<typeof world.environment.addShadowCaster>[0]) => world.environment.addShadowCaster(m) };
+      const fuel = new FuelSystem(vehicles, interaction, player, shadows, [
+        { kind: 'jerrican', amount: 4, position: CONTAINER_SPOTS.jerrican },
+        { kind: 'oil', amount: 1, position: CONTAINER_SPOTS.oil },
+      ]);
       const mechanics = new MechanicsSystem(vehicles, interaction, player, shadows, [
         { defId: 'cdi-free', condition: 1, position: SPARE_PART_SPOTS[0] },
         { defId: 'plug-std', condition: 1, position: SPARE_PART_SPOTS[1] },
         { defId: 'exhaust-racing', condition: 1, position: SPARE_PART_SPOTS[2] },
         { defId: 'silencer-racing', condition: 1, position: SPARE_PART_SPOTS[3] },
-      ]);
+      ], (bike) => fuel.lubricationOf(bike));
       const shop = new ShopSystem(economy.wallet, mechanics, { deliverySpot: DELIVERY_SPOT, sellArea: GARAGE_BOUNDS });
-      const save = new SaveSystem({ economy, player, vehicles, mechanics, shop });
+      fuel.attachShop(shop);
+      const save = new SaveSystem({ economy, player, vehicles, mechanics, shop, fuel });
       // Ordre important : le monde, le joueur (caméra), les véhicules, la
       // mécanique (fantôme de remontage), puis l'interaction (rayon depuis
       // la caméra, désactivée en conduite).
@@ -126,6 +132,7 @@ export class Game {
       await this.addSystem(economy, ctx);
       await this.addSystem(player, ctx);
       await this.addSystem(vehicles, ctx);
+      await this.addSystem(fuel, ctx);
       await this.addSystem(mechanics, ctx);
       await this.addSystem(shop, ctx);
       await this.addSystem(interaction, ctx);
@@ -273,7 +280,7 @@ export class Game {
           return bike ? { x: bike.position.x, y: bike.position.y, z: bike.position.z, lean: bike.leanAngle } : null;
         },
         probeY: () => world.probeY(),
-      }, { scene, engine, player, vehicles, interaction, world, input, mechanics, economy, shop, save, cheats: ctx.cheats });
+      }, { scene, engine, player, vehicles, interaction, world, input, mechanics, economy, shop, save, fuel, cheats: ctx.cheats });
 
       this.loop.start();
       this.setState('playing');

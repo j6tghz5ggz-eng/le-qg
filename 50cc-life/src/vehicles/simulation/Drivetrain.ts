@@ -11,7 +11,7 @@
  * - le rapport long est limité (bridage) : à 45 km/h le moteur atteint le
  *   rupteur. Le débridage sera une amélioration mécanique !
  */
-import type { EngineStats, Powertrain, PowertrainInput, PowertrainOutput, ShiftResult, StartResult } from './Powertrain';
+import { fuelFlow, type EngineStats, type Powertrain, type PowertrainInput, type PowertrainOutput, type ShiftResult, type StartResult } from './Powertrain';
 
 export interface DrivetrainSpec {
   readonly idleRpm: number;
@@ -91,6 +91,10 @@ export class Drivetrain {
   /** Engagement de l'embrayage (0 à 1). */
   clutch = 0;
   running = false;
+  /** Couple de combustion au dernier pas (N·m), pour la consommation. */
+  combustion = 0;
+  /** Ouverture des gaz au dernier pas. */
+  gas = 0;
 
   constructor(readonly spec: DrivetrainSpec) {
     this.ratio = spec.lowRatio;
@@ -114,6 +118,7 @@ export class Drivetrain {
   update(dt: number, throttle: number, wheelSpeed: number): number {
     const s = this.spec;
     const gas = this.running ? Math.min(Math.max(throttle, 0), 1) : 0;
+    this.gas = gas;
     const wheelRpm = (Math.max(wheelSpeed, 0) / (TWO_PI * s.wheelRadius)) * 60;
 
     // Variateur : rapport qui ramène le moteur vers son régime cible.
@@ -150,6 +155,8 @@ export class AutomaticPowertrain implements Powertrain {
   readonly loudness = 0.35;
   private readonly drivetrain: Drivetrain;
   private canRun = true;
+  private fuelOk = true;
+  seized = false;
 
   constructor(spec: DrivetrainSpec) {
     this.drivetrain = new Drivetrain(spec);
@@ -167,8 +174,21 @@ export class AutomaticPowertrain implements Powertrain {
     return this.drivetrain.spec.limiterRpm;
   }
 
+  get throttle(): number {
+    return this.drivetrain.gas;
+  }
+
+  get fuelFlowLph(): number {
+    return fuelFlow(this.drivetrain.running, this.drivetrain.combustion, this.drivetrain.rpm);
+  }
+
   consumeStall(): boolean {
     return false;
+  }
+
+  setFuelSupply(ok: boolean): void {
+    this.fuelOk = ok;
+    if (!ok) this.drivetrain.stop();
   }
 
   update(dt: number, input: PowertrainInput, wheelSpeed: number): PowertrainOutput {
@@ -177,6 +197,7 @@ export class AutomaticPowertrain implements Powertrain {
 
   start(): StartResult {
     if (!this.canRun) return { ok: false, reason: 'missing', missing: [] };
+    if (!this.fuelOk) return { ok: false, reason: 'noFuel' };
     this.drivetrain.start();
     return { ok: true };
   }
@@ -195,6 +216,7 @@ export class AutomaticPowertrain implements Powertrain {
 
   setEngineStats(stats: EngineStats): void {
     this.canRun = stats.canRun;
+    this.seized = stats.seized;
     if (!stats.canRun) this.drivetrain.stop();
   }
 }

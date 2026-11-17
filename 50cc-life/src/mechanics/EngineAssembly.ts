@@ -30,6 +30,8 @@ const MISSING_SILENCER_POWER = 0.97;
 const MISSING_SILENCER_LOUDNESS = 0.8;
 const MISSING_FILTER_POWER = 1.03;
 const DEFAULT_LIMITER = 8700;
+/** En dessous, le piston est grippé : le moteur ne tourne plus. */
+export const SEIZED_CONDITION = 0.02;
 
 export class EngineAssembly {
   private readonly installed = new Map<string, PartInstance>();
@@ -134,6 +136,13 @@ export class EngineAssembly {
 
     const piston = this.installed.get('piston');
     if (piston) powerFactor *= 0.75 + 0.25 * piston.condition; // usure : perte de compression
+    const cylinder = this.installed.get('cylinder');
+    if (cylinder) powerFactor *= 0.9 + 0.1 * cylinder.condition; // chemise rayée
+    const filter = this.installed.get('airFilter');
+    if (filter) powerFactor *= 0.95 + 0.05 * filter.condition; // filtre encrassé : moins d'air
+    // Piston grippé (moteur serré faute d'huile) : à remplacer.
+    const seized = piston !== undefined && piston.condition <= SEIZED_CONDITION;
+    if (seized) missing.push('Piston (serré)');
     const chamber = this.installed.get('exhaust');
     const silencer = this.installed.get('silencer');
     if (!chamber) powerFactor *= MISSING_CHAMBER_POWER;
@@ -153,6 +162,7 @@ export class EngineAssembly {
 
     return {
       canRun: missing.length === 0,
+      seized,
       missing,
       powerFactor,
       limiterRpm: ignition ? (this.definition(ignition).effects.limiterRpm ?? DEFAULT_LIMITER) : DEFAULT_LIMITER,

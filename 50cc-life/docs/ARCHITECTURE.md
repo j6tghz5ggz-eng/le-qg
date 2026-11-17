@@ -63,7 +63,7 @@ presque chaque semaine : on met à jour volontairement, tous les paquets
 ├── index.html                 entrée du jeu (canvas + couche UI)
 ├── package.json · tsconfig*.json · vite.config.ts · playwright.config.ts
 ├── public/                    fichiers servis tels quels (icône, puis assets optimisés)
-├── assets-src/                sources lourdes : HORS GIT (voir § 12)
+├── assets-src/                sources lourdes : HORS GIT (voir § 13)
 ├── tools/check-sizes.mjs      budgets de taille
 ├── .githooks/pre-commit       refuse les fichiers de plus de 10 Mo
 ├── docs/ARCHITECTURE.md       ce document
@@ -92,6 +92,7 @@ presque chaque semaine : on met à jour volontairement, tous les paquets
     ├── save/                  format de sauvegarde (pur, validé) et sauvegarde automatique
     ├── vehicles/
     │   ├── bike/              physique de la moto, modèles 3D (supermotard détaillé, déco), fiches techniques
+    │   ├── fuel/              réservoir (pur), carburant, jerricans et bidons d'huile
     │   ├── simulation/        boîte manuelle, embrayage auto, variateur (TS pur, testé)
     │   └── audio/             son moteur 2 temps synthétisé
     ├── world/                 environnement (ciel, reflets, lumière, ombres), scène de test
@@ -503,7 +504,85 @@ Choix du joueur : livraisons en 50, réparations pour des voisins et
 revente de pièces. La revente est déjà là. Les livraisons et les
 réparations demandent le monde ouvert et des personnages.
 
-## 12. Stockage gratuit : ce qui va où
+## 12. Essence, huile et usure (étape 6)
+
+### Valeurs des vrais modèles
+
+Recherche faite sur les notices et fiches techniques publiques. Quand les
+sources divergent, on garde la notice du constructeur.
+
+| Modèle réel (notre moto) | Réservoir | Graissage | Huile |
+|---|---|---|---|
+| Rieju MRT 50, moteur type AM6 (supermotard) | 6 L (notice ; 6,3 L sur certaines fiches) | séparé : pompe à huile, essence sans huile | réservoir d'environ 1,2 L ; pompe à 2 % maximum (1:50) |
+| MBK 51 / Motobécane (cyclo) | 3,65 L dont 0,3 L de réserve (3,5 L selon d'autres sources) | mélange | 2 % avec une huile moderne (4-5 % autrefois avec de l'huile minérale) |
+| Peugeot 103 (référence) | 3,7 L (1971) ; jusqu'à 5,1 L réserve comprise selon les versions | mélange | 2 % (doc atelier Peugeot : huile synthèse ou semi-synthèse API TC / JASO FC) |
+
+Repères : 2 % = 20 ml d'huile par litre d'essence. Consommation d'un 50
+2 temps : environ 3 L/100 km (2,9 relevés sur une Simson S51, environ 3 sur
+un MBK 51).
+
+Chaque modèle a sa fiche `fuel` dans `vehicles/bike/specs.ts` :
+contenance, réserve, graissage (`premix` + dosage, ou `injection` +
+réservoir d'huile + dosage de la pompe), bouchons d'essence et d'huile.
+
+### Le moteur boit et se graisse
+
+- **Débit d'essence** (`fuelFlow`) : environ 0,75 L par kWh de combustion,
+  plus un filet au ralenti. Cela donne environ 3 L/100 km bridée à 50 km/h
+  (vérifié par un test).
+- **Réservoir** (`vehicles/fuel/FuelTank.ts`, pur) : l'essence et l'huile
+  mélangée sont puisées ensemble. Avec le graissage séparé, la pompe dose
+  de 0,6 % au ralenti à 2 % à fond. Le moteur reçoit un rapport
+  huile / essence, qui sert à l'usure.
+- **Panne sèche** : sans essence, le moteur s'arrête et refuse de démarrer
+  (`setFuelSupply`). Le voyant « Réserve » s'allume sous la réserve. Avec le
+  graissage séparé, le voyant « Huile » s'allume quand l'huile est basse.
+
+### Faire le plein, doser le mélange
+
+- Le **jerrican** (5 L) et le **bidon d'huile 2T** (1 L) sont des objets
+  physiques. On les porte près du bouchon et on **maintient Utiliser** pour
+  verser. L'action est continue : elle s'arrête quand on lâche, quand c'est
+  plein ou quand le bidon est vide.
+- Le niveau et **le pourcentage du mélange s'affichent en direct** pendant
+  qu'on verse, avec le dosage conseillé. C'est au joueur de doser. L'huile
+  coule lentement (25 ml/s) pour qu'on puisse viser 2 %.
+- Avec le graissage séparé (supermotard), l'essence va dans le réservoir et
+  l'huile dans son propre réservoir.
+- En visant la moto, on lit ses niveaux.
+- La boutique vend le jerrican plein (10 €) et l'huile 2T (13 €). Les deux
+  sont livrés sur la palette.
+
+### Usure en roulant (`mechanics/wear.ts`, pur)
+
+- Le piston, le cylindre, la bougie et le filtre à air s'usent selon le
+  régime, l'ouverture des gaz et le graissage. Le temps est compressé : un
+  piston fait quelques heures de jeu.
+- **Graissage idéal entre 1,8 % et 3 %.** À 1 %, le piston s'use plus de deux
+  fois plus vite. Sous environ 0,6 %, le moteur chauffe et une jauge de
+  serrage monte. Sans huile à fond, il **serre en moins d'une minute**.
+- **Moteur serré** : le piston grippe (état 0) et le cylindre est rayé. Le
+  vilebrequin est bloqué et, embrayage relâché, la roue arrière est freinée
+  et peut se bloquer, comme en vrai. Le moteur ne redémarre plus
+  (« Piston (serré) ») tant qu'on n'a pas changé le piston.
+- **Trop d'huile** (au-delà de 3 %) ou ralenti prolongé : la bougie
+  s'encrasse et le moteur démarre moins bien.
+- L'usure abaisse la puissance (piston, cylindre, filtre). Les libellés
+  suivent l'état (« usé », « usée », « serré ») et l'état est sauvegardé.
+
+### Onglet DEV
+
+- **Carburant** : plein au bon dosage, vider le réservoir, jerrican plein
+  devant moi, huile 2T devant moi.
+- **Mécanique** : usure accélérée ×20, serrer le moteur (test).
+
+### Sauvegarde (version 2)
+
+Elle contient en plus les niveaux d'essence et d'huile de la moto, ainsi que
+les jerricans et bidons posés dans le monde. Une sauvegarde de version 1
+est relue avec les niveaux de départ.
+
+## 13. Stockage gratuit : ce qui va où
 
 Le principe : **Git ne contient que des fichiers légers.** Pas de Git LFS,
 dont le quota gratuit (stockage et bande passante mensuelle) s'épuise vite,
@@ -542,7 +621,7 @@ Opus) et instanciation.
    une fois avec `npm run hooks:install`.
 3. La CI échoue si un budget est dépassé.
 
-## 13. Hébergement gratuit (à mettre en place plus tard)
+## 14. Hébergement gratuit (à mettre en place plus tard)
 
 | Hébergeur | Points clés |
 |---|---|
@@ -555,7 +634,7 @@ gratuite), puis **Capacitor** pour des applications Android/iOS. Les outils
 sont gratuits ; seule la publication sur les stores est payante (Google Play :
 25 $ une fois ; App Store : 99 $/an et un Mac).
 
-## 14. Tests et intégration continue
+## 15. Tests et intégration continue
 
 - **Unitaires (Vitest)** : modules purs (bus d'événements, résolution
   dynamique, détection GPU, choix du profil…).
@@ -585,7 +664,7 @@ sont gratuits ; seule la publication sur les stores est payante (Google Play :
   performance se font **sur de vrais appareils** : PC, Android d'entrée ou de
   milieu de gamme, iPhone.
 
-## 15. Journal des décisions
+## 16. Journal des décisions
 
 | # | Décision | Raison |
 |---|---|---|
@@ -624,8 +703,12 @@ sont gratuits ; seule la publication sur les stores est payante (Google Play :
 | D33 | Sauvegarde dans localStorage (synchrone), format versionné et validé | Petite sauvegarde écrite même à la fermeture de la page ; une sauvegarde abîmée ne casse jamais le jeu |
 | D34 | Achats livrés physiquement sur une palette au garage | Immersion façon My Summer Car : la pièce achetée se porte et se monte comme les autres |
 | D35 | Écrans HTML qui coupent les commandes du jeu (`setUiCapture`) | Pas de déplacement ni de clic dans le monde pendant qu'on fait ses achats |
+| D36 | Réservoirs et graissage tirés des vrais modèles (fiche `fuel` par modèle) | Réalisme demandé ; chaque modèle a ses valeurs |
+| D37 | Consommation calculée depuis la puissance de combustion (≈ 0,75 L/kWh) | Retrouve les ≈ 3 L/100 km d'un vrai 50, et plus quand on débride |
+| D38 | Le joueur dose lui-même le mélange (affichage du % en direct) ; usure et serrage selon le graissage | Le cœur d'un jeu de mécanique 2 temps : un mauvais mélange se paie |
+| D39 | Actions maintenues continues (`tick`) pour verser | Même geste partout (maintenir Utiliser) ; on s'arrête quand on veut |
 
-## 16. Feuille de route
+## 17. Feuille de route
 
 0. ✅ **Fondations** : moteur, physique, boucle, profils de qualité, stats, tests, CI.
 1. ✅ **Joueur** : déplacement à la première personne, commandes clavier/souris, tactile et manette, prendre, porter et lancer.
@@ -633,7 +716,8 @@ sont gratuits ; seule la publication sur les stores est payante (Google Play :
 3. ✅ **Garage, pièces et boîte de vitesses** : supermotard 50 à boîte 6, embrayage, kick, atelier (démontage/remontage), son moteur.
 4. ✅ **Réalisme et outils de test** : bridage réaliste, pot passage haut + cartouche, marques fictives, moto détaillée, reflets, onglet DEV, argent, colline d'essai.
 5. ✅ **Boutique et sauvegarde** : ordinateur du garage, achat livré sur palette, revente selon l'état, sauvegarde automatique.
-6. **Monde ouvert** (streaming des morceaux + origine flottante) : routes, village, station-service.
-7. **Gagner sa vie** : livraisons en 50, réparations pour les voisins, achat d'épaves à démonter.
-8. **Outils et usure** : essence et mélange 2T, usure des pièces en roulant, pannes, clés de différentes tailles.
-9. Ensuite : vrais modèles 3D (proportions exactes), audio, PWA, Capacitor, contenu.
+6. ✅ **Essence, huile et usure** : réservoirs des vrais modèles, mélange dosé par le joueur, graissage séparé, panne sèche, usure, moteur serré.
+7. **Monde ouvert** (streaming des morceaux + origine flottante) : routes, village, station-service.
+8. **Gagner sa vie** : livraisons en 50, réparations pour les voisins, achat d'épaves à démonter.
+9. **Outils** : clés de différentes tailles, robinet de réserve, chaîne à régler.
+10. Ensuite : vrais modèles 3D (proportions exactes), audio, PWA, Capacitor, contenu.

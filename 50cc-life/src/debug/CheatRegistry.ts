@@ -45,7 +45,7 @@ export interface CheatGroup {
 }
 
 /** Ordre d'affichage des groupes connus ; les autres suivent dans l'ordre d'ajout. */
-const GROUP_ORDER = ['Argent', 'Téléportation', 'Moto', 'Mécanique', 'Boutique', 'Sauvegarde', 'Joueur', 'Monde'];
+const GROUP_ORDER = ['Argent', 'Téléportation', 'Moto', 'Carburant', 'Mécanique', 'Boutique', 'Sauvegarde', 'Joueur', 'Monde'];
 
 export class CheatRegistry {
   private readonly groups = new Map<string, Cheat[]>();

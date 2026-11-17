@@ -6,7 +6,7 @@ première personne. Inspirations : My Summer Car, Mon Bazou.
 **Babylon.js · Havok · TypeScript · Vite** : 100 % gratuit, fonctionne dans le
 navigateur sur PC, Android et iOS.
 
-> État : **étape 5** (boutique et sauvegarde).
+> État : **étape 6** (essence, huile et usure).
 >
 > - Le supermotard détaillé (VARONE SMX 50, marque fictive) a une boîte 6
 >   vitesses, un embrayage, il peut caler et démarre au kick.
@@ -21,6 +21,10 @@ navigateur sur PC, Android et iOS.
 > - Boutique en ligne (ordinateur du garage) : les pièces achetées sont
 >   livrées sur une palette, et on peut revendre ses pièces.
 > - Sauvegarde automatique de la partie (argent, moto, pièces, position).
+> - Essence et huile : réservoirs des vrais modèles, mélange 2 temps dosé
+>   par le joueur (2 % conseillé), graissage séparé sur le supermotard,
+>   panne sèche.
+> - Usure des pièces en roulant ; sans huile, le moteur serre.
 
 ## Démarrer
 
@@ -70,6 +74,7 @@ Ouvrez cette adresse sur le téléphone.
 | Utiliser, monter sur la moto | E | bouton contextuel | Y |
 | **Démonter / remonter une pièce** | **maintenir E** en visant la pièce (ou en portant la pièce près de son emplacement) | maintenir le bouton contextuel | maintenir Y |
 | Boutique (ordinateur du garage) | E en visant l'ordinateur, Échap pour fermer | Ouvrir la boutique | Y |
+| Faire le plein / verser l'huile | porter le jerrican ou le bidon près du bouchon, **maintenir E** | maintenir le bouton contextuel | maintenir Y |
 
 ### Sur le supermotard (boîte manuelle)
 

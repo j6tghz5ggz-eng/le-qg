@@ -323,6 +323,9 @@ export function createSupermotardVisual(scene: Scene, spec: BikeSpec): BikeVisua
     ),
   );
   frame.add('alu', rod(scene, 'fuel-cap', v3(0, 0.775, 0.3), v3(0, 0.792, 0.3), 0.058, 16));
+  // Réservoir d'huile du graissage séparé (translucide, côté droit) et son bouchon.
+  frame.add('white', box(scene, 'oil-tank', v3(0.085, 0.585, -0.1), 0.05, 0.13, 0.085));
+  frame.add('plastic', rod(scene, 'oil-cap', v3(0.112, 0.655, -0.1), v3(0.118, 0.675, -0.1), 0.032, 12));
   frame.add('plastic', rod(scene, 'fuel-vent', v3(0, 0.792, 0.3), v3(0.03, 0.83, 0.26), 0.006, 6));
 
   // Sabot moteur en alu (protège le bas moteur et le berceau).

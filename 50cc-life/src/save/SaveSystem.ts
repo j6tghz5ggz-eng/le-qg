@@ -2,7 +2,8 @@
  * Sauvegarde automatique de la partie.
  *
  * - Quoi : argent, position du joueur, première moto (position, pièces
- *   montées et leur état), pièces posées dans le monde, colis en route.
+ *   montées et leur état, essence et huile), pièces, jerricans et bidons
+ *   posés dans le monde, colis en route.
  * - Quand : toutes les 20 s, quand l'onglet passe en arrière-plan ou que la
  *   page se ferme, et à la demande (onglet DEV).
  * - Où : localStorage (une seule clé, quelques Ko). Écriture synchrone :
@@ -22,6 +23,7 @@ import { PART_CATALOG } from '../mechanics/parts';
 import type { PlayerController } from '../player/PlayerController';
 import { t } from '../ui/i18n';
 import type { VehicleSystem } from '../vehicles/VehicleSystem';
+import type { FuelSystem } from '../vehicles/fuel/FuelSystem';
 import { SAVE_VERSION, parseSave, serializeSave, type SaveData } from './saveData';
 
 const SAVE_KEY = 'save';
@@ -33,6 +35,7 @@ export interface SaveDeps {
   readonly vehicles: VehicleSystem;
   readonly mechanics: MechanicsSystem;
   readonly shop: ShopSystem;
+  readonly fuel: FuelSystem;
 }
 
 export class SaveSystem implements GameSystem {
@@ -100,7 +103,7 @@ export class SaveSystem implements GameSystem {
   }
 
   capture(): SaveData {
-    const { economy, player, vehicles, mechanics, shop } = this.deps;
+    const { economy, player, vehicles, mechanics, shop, fuel } = this.deps;
     const bike = vehicles.bikes[0] ?? null;
     let foot = { x: player.footPosition.x, y: player.footPosition.y, z: player.footPosition.z };
     let yaw = player.heading;
@@ -111,6 +114,12 @@ export class SaveSystem implements GameSystem {
       yaw = h;
     }
     const state = mechanics.exportState();
+    const fluids = fuel.exportState();
+    // Colis en route : ils seront sur la palette au chargement.
+    const pendingContainers = shop
+      .pending()
+      .map((d) => fuel.savedDelivery(d.id, d.position))
+      .filter((c): c is NonNullable<typeof c> => c !== null);
     return {
       version: SAVE_VERSION,
       savedAt: Date.now(),
@@ -124,16 +133,20 @@ export class SaveSystem implements GameSystem {
             z: bike.position.z,
             yaw: bike.heading,
             parts: state.parts,
+            fluids: fluids.fluids,
           }
         : null,
       loose: [...state.loose, ...shop.pendingParts()],
+      containers: [...fluids.containers, ...pendingContainers],
     };
   }
 
   private apply(data: SaveData): void {
-    const { economy, player, vehicles, mechanics } = this.deps;
+    const { economy, player, vehicles, mechanics, fuel } = this.deps;
     economy.wallet.set(data.money);
     mechanics.importState(data.bike?.parts ?? null, data.loose);
+    // Sauvegarde de version 1 : pas de bidons enregistrés, on garde ceux de départ.
+    if (data.bike?.fluids || data.containers.length > 0) fuel.importState(data.bike?.fluids ?? null, data.containers);
     const bike = vehicles.bikes[0];
     if (bike && data.bike) vehicles.place(bike, new Vector3(data.bike.x, data.bike.y + 0.02, data.bike.z), data.bike.yaw);
     player.teleport(data.player, data.player.yaw);

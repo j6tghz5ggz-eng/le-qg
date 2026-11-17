@@ -24,9 +24,10 @@ import type { InteractionSystem } from '../player/interaction/InteractionSystem'
 import { t } from '../ui/i18n';
 import type { Bike } from '../vehicles/bike/Bike';
 import type { ShadowHost, VehicleSystem } from '../vehicles/VehicleSystem';
-import { EngineAssembly, createPart, stockSm50, type PartInstance } from './EngineAssembly';
+import { EngineAssembly, SEIZED_CONDITION, createPart, stockSm50, type PartInstance } from './EngineAssembly';
+import { wearStep } from './wear';
 import { createPartMesh, getGhostMaterial } from './partMeshes';
-import { PART_CATALOG, PARTS, type PartDefinition } from './parts';
+import { PART_CATALOG, PARTS, isFeminine, type PartDefinition } from './parts';
 import type { SlotDefinition } from './slots';
 import type { SavedPart } from '../save/saveData';
 
@@ -51,7 +52,14 @@ interface BikeRig {
   readonly engine: EngineAssembly;
   /** Modèle 3D de chaque pièce montée, par emplacement. */
   readonly meshes: Map<string, Mesh>;
+  /** Jauge de serrage (0 à 1 ; 1 = le piston grippe). */
+  seize: number;
+  /** Temps depuis le dernier recalcul des performances (usure). */
+  statsTimer: number;
 }
+
+/** Pièces qui s'usent en roulant, et leur emplacement. */
+const WEARING_SLOTS = ['piston', 'cylinder', 'sparkPlug', 'airFilter'] as const;
 
 interface LoosePart {
   readonly part: PartInstance;
@@ -95,6 +103,8 @@ export class MechanicsSystem implements GameSystem {
   private candidateAction: HoldAction | null = null;
   /** Triche « moteur DEV » : couple ×2,5, aucun bridage. */
   private devEngine = false;
+  /** Multiplicateur d'usure (triche « usure accélérée »). */
+  private wearRate = 1;
 
   constructor(
     private readonly vehicles: VehicleSystem,
@@ -102,6 +112,8 @@ export class MechanicsSystem implements GameSystem {
     private readonly player: PlayerController,
     private readonly shadows: ShadowHost,
     private readonly spares: readonly SparePart[],
+    /** Graissage reçu par le moteur d'une moto (rapport huile / essence), fourni par le carburant. */
+    private readonly lubrication: (bike: Bike) => number = () => 0.02,
   ) {}
 
   init(ctx: GameContext): void {
@@ -109,7 +121,7 @@ export class MechanicsSystem implements GameSystem {
     for (const bike of this.vehicles.bikes) {
       const slots = bike.spec.engineSlots;
       if (!slots) continue;
-      const rig: BikeRig = { bike, engine: stockSm50(new EngineAssembly(slots, PART_CATALOG)), meshes: new Map() };
+      const rig: BikeRig = { bike, engine: stockSm50(new EngineAssembly(slots, PART_CATALOG)), meshes: new Map(), seize: 0, statsTimer: 0 };
       this.rigs.push(rig);
       for (const [slotId, part] of rig.engine.entries()) this.attachMesh(rig, slotId, part);
       this.refreshStats(rig);
@@ -160,6 +172,22 @@ export class MechanicsSystem implements GameSystem {
       run: () => {
         if (this.interaction.isHolding) return;
         for (const loose of [...this.loose.values()]) this.disposeLoose(loose);
+      },
+    });
+    cheats.add('Mécanique', {
+      kind: 'toggle',
+      id: 'fast-wear',
+      label: 'Usure accélérée ×20',
+      get: () => this.wearRate > 1,
+      set: (on) => (this.wearRate = on ? 20 : 1),
+    });
+    cheats.add('Mécanique', {
+      kind: 'action',
+      id: 'seize-engine',
+      label: 'Serrer le moteur (test)',
+      run: () => {
+        const rig = this.rigs[0];
+        if (rig) this.seize(rig);
       },
     });
     cheats.add('Moto', {
@@ -281,6 +309,40 @@ export class MechanicsSystem implements GameSystem {
     for (const l of loose) this.spawnPart(l.defId, l.condition, new Vector3(l.x, l.y + 0.03, l.z));
   }
 
+  /** Usure en roulant : piston, cylindre, bougie, filtre ; serrage sans huile. */
+  fixedUpdate(dt: number): void {
+    for (const rig of this.rigs) {
+      const pt = rig.bike.powertrain;
+      if (!pt.running) continue;
+      const w = wearStep({ dt, rpm: pt.rpm, limiterRpm: pt.limiterRpm, throttle: pt.throttle, lubrication: this.lubrication(rig.bike), rate: this.wearRate });
+      for (const slot of WEARING_SLOTS) {
+        const part = rig.engine.part(slot);
+        if (part) part.condition = Math.max(0, part.condition - w[slot]);
+      }
+      rig.seize = Math.min(1, Math.max(0, rig.seize + w.seize));
+      if (rig.seize >= 1) {
+        this.seize(rig);
+        continue;
+      }
+      rig.statsTimer += dt;
+      if (rig.statsTimer >= 1) {
+        rig.statsTimer = 0;
+        this.refreshStats(rig);
+      }
+    }
+  }
+
+  /** Le piston grippe : moteur serré (roue bloquée si l'embrayage est relâché). */
+  private seize(rig: BikeRig): void {
+    rig.seize = 0;
+    const piston = rig.engine.part('piston');
+    if (piston) piston.condition = 0;
+    const cylinder = rig.engine.part('cylinder');
+    if (cylinder) cylinder.condition = Math.max(0, cylinder.condition - 0.35);
+    this.refreshStats(rig);
+    this.ctx.bus.emit('ui:notice', { message: t('wear.seized') });
+  }
+
   update(): void {
     // Pièce portée près d'un emplacement libre : fantôme + action « Remonter ».
     const held = this.interaction.heldBody;
@@ -304,7 +366,10 @@ export class MechanicsSystem implements GameSystem {
     this.shadows.addShadowCaster(mesh);
     rig.meshes.set(slotId, mesh);
     this.ctx.interactables.registerMesh(mesh, {
-      label: partLabel(def, part),
+      // Accesseur : le libellé suit l'usure (« usée », « serré »).
+      get label() {
+        return partLabel(def, part);
+      },
       hold: {
         label: t('mechanics.remove'),
         detail: fastenersLabel(slot.fasteners),
@@ -371,7 +436,9 @@ export class MechanicsSystem implements GameSystem {
     const loose: LoosePart = { part, def, mesh, aggregate };
     this.loose.set(aggregate.body, loose);
     this.ctx.interactables.register(aggregate.body, {
-      label: partLabel(def, part),
+      get label() {
+        return partLabel(def, part);
+      },
       grabbable: true,
       installTarget: () => this.installActionFor(loose),
     });
@@ -478,8 +545,10 @@ function fastenersLabel(count: number): string {
 }
 
 function partLabel(def: PartDefinition, part: PartInstance): string {
-  if (part.condition < 0.45) return `${def.name} (${t('mechanics.worn')})`;
-  if (part.condition > 0.97) return `${def.name} (${t('mechanics.new')})`;
+  const f = isFeminine(def);
+  if (def.category === 'piston' && part.condition <= SEIZED_CONDITION) return `${def.name} (${t('mechanics.seized')})`;
+  if (part.condition < 0.45) return `${def.name} (${t(f ? 'mechanics.worn' : 'mechanics.wornM')})`;
+  if (part.condition > 0.97) return `${def.name} (${t(f ? 'mechanics.new' : 'mechanics.newM')})`;
   return def.name;
 }
 

@@ -1018,3 +1018,48 @@ kbd {
     margin-left: auto;
   }
 }
+
+/* ---------- Tableau de bord : jauge d'essence et voyants ---------- */
+.dash__fuel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.dash__fuel-label {
+  opacity: 0.6;
+}
+
+.dash__fuel-bar {
+  position: relative;
+  width: 90px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+
+.dash__fuel-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  background: #e8eaed;
+}
+
+.dash__fuel-fill.is-low {
+  background: #ffb020;
+}
+
+.dash__light {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #ffb020;
+  color: #111;
+}
+
+.dash__light--oil {
+  background: #ff5a45;
+}

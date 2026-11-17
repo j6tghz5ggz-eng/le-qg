@@ -49,6 +49,15 @@ export interface GameEvents {
     readonly manual: boolean;
     readonly autoClutch: boolean;
   };
+  /** Jauge d'essence et voyants (≈ 4 fois par seconde pendant la conduite). */
+  'vehicle:fuel': {
+    /** Remplissage du réservoir (0 à 1). */
+    readonly fraction: number;
+    /** Sur la réserve : voyant allumé. */
+    readonly reserve: boolean;
+    /** Huile basse (graissage séparé), null sans réservoir d'huile. */
+    readonly oilLow: boolean | null;
+  };
   /** Le solde du porte-monnaie a changé (delta = 0 : affichage initial). */
   'money:changed': { readonly balance: number; readonly delta: number };
   /** Message court à afficher (ex. « Ralentissez pour descendre »). */

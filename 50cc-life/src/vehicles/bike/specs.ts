@@ -22,6 +22,30 @@ export interface BoxCollider {
   readonly size: Vec3Tuple;
 }
 
+/**
+ * Graissage d'un moteur 2 temps :
+ * - `premix` : l'huile est mélangée à l'essence dans le réservoir
+ *   (`ratio` conseillé, 0,02 = 2 % = 20 ml d'huile par litre) ;
+ * - `injection` : graissage séparé, une pompe prend l'huile dans son propre
+ *   réservoir et la dose selon l'ouverture des gaz (du ralenti à fond).
+ */
+export type Lubrication =
+  | { readonly kind: 'premix'; readonly ratio: number }
+  | { readonly kind: 'injection'; readonly oilTankLiters: number; readonly idleRatio: number; readonly fullRatio: number };
+
+/** Réservoir et graissage (valeurs des vrais modèles, voir docs/ARCHITECTURE.md). */
+export interface FuelSpec {
+  /** Contenance du réservoir d'essence (L, réserve comprise). */
+  readonly tankLiters: number;
+  /** Réserve (L) : le voyant s'allume en dessous. */
+  readonly reserveLiters: number;
+  readonly lubrication: Lubrication;
+  /** Bouchon d'essence (repère de la moto) : on y verse le jerrican. */
+  readonly fuelCap: Vec3Tuple;
+  /** Bouchon du réservoir d'huile (graissage séparé uniquement). */
+  readonly oilCap?: Vec3Tuple;
+}
+
 export interface BikeSpec {
   readonly id: string;
   /** Nom affiché. */
@@ -75,6 +99,7 @@ export interface BikeSpec {
   readonly collider: { readonly frame: BoxCollider; readonly wheelStop: number; readonly rider: BoxCollider };
   /** Emplacements des pièces démontables (null = pas de mécanique). */
   readonly engineSlots: readonly SlotDefinition[] | null;
+  readonly fuel: FuelSpec;
   /** Position des yeux du pilote (repère local). */
   readonly eyeLocal: Vec3Tuple;
   /** Au-dessus de cette vitesse (m/s), on ne peut pas descendre. */
@@ -107,6 +132,9 @@ export const CYCLO: BikeSpec = {
     rider: { center: [0, 0.95, -0.25], size: [0.42, 0.75, 0.36] },
   },
   engineSlots: null,
+  // Type MBK 51 : réservoir de 3,65 L dont 0,3 L de réserve, mélange à 2 %
+  // (huile synthèse ; les vieux moteurs tournaient à 4-5 % d'huile minérale).
+  fuel: { tankLiters: 3.65, reserveLiters: 0.3, lubrication: { kind: 'premix', ratio: 0.02 }, fuelCap: [0, 0.5, -0.1] },
   eyeLocal: [0, 1.22, -0.2],
   maxDismountSpeed: 2.5,
 };
@@ -114,7 +142,7 @@ export const CYCLO: BikeSpec = {
 /**
  * Supermotard 50 à boîte 6 (style « SM 50 » des années 2020) : grandes
  * roues de 17", suspensions à long débattement, selle haute, freins à
- * disque, moteur 2T à boîte manuelle bridé à 45 km/h par le CDI.
+ * disque, moteur 2T à boîte manuelle bridé (≈ 50 km/h à plat, voir parts.ts).
  */
 export const SM50: BikeSpec = {
   id: 'sm50',
@@ -142,6 +170,16 @@ export const SM50: BikeSpec = {
     rider: { center: [0, 1.08, -0.22], size: [0.42, 0.78, 0.36] },
   },
   engineSlots: SM50_SLOTS,
+  // Type Rieju MRT 50 (moteur type AM6) : réservoir de 6 L, graissage séparé
+  // (essence sans huile), réservoir d'huile d'environ 1,2 L ; la pompe dose
+  // au maximum ~2 % (1:50) à fond, beaucoup moins au ralenti.
+  fuel: {
+    tankLiters: 6,
+    reserveLiters: 1,
+    lubrication: { kind: 'injection', oilTankLiters: 1.2, idleRatio: 0.006, fullRatio: 0.02 },
+    fuelCap: [0, 0.79, 0.3],
+    oilCap: [0.115, 0.665, -0.1],
+  },
   eyeLocal: [0, 1.38, -0.18],
   maxDismountSpeed: 2.5,
 };

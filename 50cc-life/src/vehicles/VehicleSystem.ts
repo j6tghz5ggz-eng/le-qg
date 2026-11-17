@@ -67,6 +67,8 @@ export class VehicleSystem implements GameSystem {
   private lastThrottle = 0;
   private readonly ray = new PhysicsRaycastResult();
   private readonly spawns = new Map<Bike, VehicleSpawn>();
+  /** Information affichée en visant une moto (niveaux d'essence…), fournie par le carburant. */
+  detailProvider: ((bike: Bike) => string | null) | null = null;
 
   constructor(
     private readonly player: PlayerController,
@@ -171,8 +173,12 @@ export class VehicleSystem implements GameSystem {
       mesh.receiveShadows = true;
       this.shadows.addShadowCaster(mesh);
     }
+    const vehicles = this;
     this.ctx.interactables.register(bike.body, {
       label: spawn.spec.label,
+      get detail() {
+        return vehicles.detailProvider?.(bike) ?? undefined;
+      },
       useLabel: t('vehicle.mount'),
       use: () => this.mount(bike),
     });
@@ -309,6 +315,7 @@ export class VehicleSystem implements GameSystem {
     if (result.ok) this.notice(t('vehicle.engineOn'));
     else if (result.reason === 'missing') this.notice(`${t('vehicle.cantStart')} ${result.missing.join(', ')}`);
     else if (result.reason === 'inGear') this.notice(t('vehicle.neutralToStart'));
+    else if (result.reason === 'noFuel') this.notice(t('fuel.empty'));
     else this.notice(t('vehicle.kickFailed'));
   }
 

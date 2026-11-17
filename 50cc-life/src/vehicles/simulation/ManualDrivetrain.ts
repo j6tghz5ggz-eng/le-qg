@@ -24,6 +24,7 @@
  */
 import { sampleCurve } from './Drivetrain';
 import {
+  fuelFlow,
   restrictionFactor,
   type EngineStats,
   type Powertrain,
@@ -103,6 +104,7 @@ const DEFAULT_STATS: EngineStats = {
   restrictions: [],
   startChance: 0.85,
   loudness: 0.4,
+  seized: false,
 };
 
 export class ManualDrivetrain implements Powertrain {
@@ -114,6 +116,11 @@ export class ManualDrivetrain implements Powertrain {
   locked = false;
   private stats: EngineStats = DEFAULT_STATS;
   private stalled = false;
+  private fuelOk = true;
+  /** Ouverture des gaz effective au dernier pas (ralenti compris). */
+  throttle = 0;
+  /** Débit d'essence au dernier pas (L/h). */
+  fuelFlowLph = 0;
 
   constructor(readonly spec: ManualDrivetrainSpec) {}
 
@@ -141,6 +148,11 @@ export class ManualDrivetrain implements Powertrain {
     if (!stats.canRun) this.running = false;
   }
 
+  setFuelSupply(ok: boolean): void {
+    this.fuelOk = ok;
+    if (!ok) this.running = false;
+  }
+
   consumeStall(): boolean {
     const stalled = this.stalled;
     this.stalled = false;
@@ -151,6 +163,7 @@ export class ManualDrivetrain implements Powertrain {
   start(clutch = 0, random: () => number = Math.random): StartResult {
     if (this.running) return { ok: true };
     if (!this.stats.canRun) return { ok: false, reason: 'missing', missing: this.stats.missing };
+    if (!this.fuelOk) return { ok: false, reason: 'noFuel' };
     if (this.gear !== 0 && clutch < SHIFT_CLUTCH_THRESHOLD) return { ok: false, reason: 'inGear' };
     if (random() > this.stats.startChance) return { ok: false, reason: 'failed' };
     this.running = true;
@@ -177,12 +190,26 @@ export class ManualDrivetrain implements Powertrain {
     const engagement = ratio > 0 ? clutchEngagement(input.clutch) : 0;
     // Régime « côté roue » ramené au vilebrequin (rad/s).
     const wheelSide = ratio > 0 ? (Math.max(wheelSpeed, 0) / s.wheelRadius) * ratio : 0;
+
+    if (this.stats.seized) {
+      // Moteur serré : vilebrequin bloqué. Embrayage relâché, la roue est
+      // freinée de toute la capacité de l'embrayage (elle peut se bloquer).
+      this.running = false;
+      this.rpm = 0;
+      this.throttle = 0;
+      this.fuelFlowLph = 0;
+      this.locked = false;
+      const capacity = s.clutchCapacity * engagement * engagement;
+      const torque = wheelSide > 0.5 ? -capacity : 0;
+      return { force: (torque * ratio * s.efficiency) / s.wheelRadius, inertiaMass: 0 };
+    }
     let omega = this.rpm * RPM_TO_RAD;
 
     // Couple moteur : combustion (si allumage) − frottements/pompage.
     let combustion = 0;
+    this.throttle = this.running ? Math.max(Math.min(Math.max(input.throttle, 0), 1), this.idleThrottle()) : 0;
     if (this.running && this.rpm < this.stats.limiterRpm) {
-      const gas = Math.max(Math.min(Math.max(input.throttle, 0), 1), this.idleThrottle());
+      const gas = this.throttle;
       combustion =
         sampleCurve(s.torqueCurve, this.rpm) *
         this.stats.powerFactor *
@@ -230,9 +257,10 @@ export class ManualDrivetrain implements Powertrain {
       this.stalled = true;
     }
     // Démarrage « à la poussette » : moteur entraîné par la roue, gaz ouverts.
-    if (!this.running && this.locked && this.rpm > 1500 && input.throttle > 0.05 && this.stats.canRun) {
+    if (!this.running && this.locked && this.rpm > 1500 && input.throttle > 0.05 && this.stats.canRun && this.fuelOk) {
       this.running = true;
     }
+    this.fuelFlowLph = fuelFlow(this.running, combustion, this.rpm);
 
     const force = (transmitted * ratio * s.efficiency) / s.wheelRadius;
     const inertiaMass = this.locked ? (s.inertia * ratio * ratio) / (s.wheelRadius * s.wheelRadius) : 0;

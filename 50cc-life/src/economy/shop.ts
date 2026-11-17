@@ -38,9 +38,10 @@ export function describePart(def: PartDefinition): string {
 }
 
 /** Libellé de l'état d'une pièce (« Neuve », « Bon état »…). */
-export function conditionLabel(condition: number): string {
-  if (condition > 0.97) return 'Neuve';
+export function conditionLabel(condition: number, feminine = true): string {
+  const e = feminine ? 'e' : '';
+  if (condition > 0.97) return feminine ? 'Neuve' : 'Neuf';
   if (condition >= 0.7) return 'Bon état';
-  if (condition >= 0.45) return 'Usée';
-  return 'Très usée';
+  if (condition >= 0.45) return `Usé${e}`;
+  return `Très usé${e}`;
 }

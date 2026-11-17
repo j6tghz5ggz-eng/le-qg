@@ -21,11 +21,21 @@ export interface HoldAction {
   /** Raison qui empêche l'action (null = possible). Vérifiée au début. */
   blocker(): string | null;
   complete(): void;
+  /**
+   * Action continue (verser de l'essence…) : appelée à chaque image tant
+   * que la touche est maintenue ; retourne faux quand c'est fini (réservoir
+   * plein, bidon vide). `seconds` est alors ignoré.
+   */
+  tick?(dt: number): boolean;
+  /** Avancement affiché d'une action continue (0 à 1, ex. remplissage). */
+  progress?(): number;
 }
 
 export interface Interactable {
-  /** Nom affiché sous le réticule (ex. « Caisse à outils »). */
+  /** Nom affiché sous le réticule (ex. « Caisse à outils »). Peut être un accesseur (valeur qui change). */
   readonly label: string;
+  /** Information affichée sous le nom (ex. niveaux d'essence et d'huile). */
+  readonly detail?: string;
   /** Peut être porté à la main. */
   readonly grabbable?: boolean;
   /** Libellé de l'action « Utiliser » (touche E). */

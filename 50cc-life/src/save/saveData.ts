@@ -7,7 +7,11 @@
  */
 import type { PartCatalog } from '../mechanics/parts';
 
-export const SAVE_VERSION = 1;
+/**
+ * Version 2 : niveaux d'essence et d'huile de la moto, jerricans et bidons.
+ * Une sauvegarde de version 1 est relue (niveaux de départ par défaut).
+ */
+export const SAVE_VERSION = 2;
 
 export interface SavedPart {
   readonly defId: string;
@@ -22,6 +26,20 @@ export interface SavedPose {
   readonly yaw: number;
 }
 
+export interface SavedFluids {
+  readonly fuel: number;
+  readonly premixOil: number;
+  readonly oilTank: number;
+}
+
+export interface SavedContainer {
+  readonly kind: 'jerrican' | 'oil';
+  readonly amount: number;
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+}
+
 export interface SaveData {
   readonly version: typeof SAVE_VERSION;
   /** Date (ms depuis 1970). */
@@ -29,7 +47,9 @@ export interface SaveData {
   readonly money: number;
   readonly player: SavedPose;
   /** Première moto : position et pièces montées (emplacement → pièce). */
-  readonly bike: (SavedPose & { readonly parts: Readonly<Record<string, SavedPart>> }) | null;
+  readonly bike: (SavedPose & { readonly parts: Readonly<Record<string, SavedPart>>; readonly fluids: SavedFluids | null }) | null;
+  /** Jerricans et bidons d'huile posés dans le monde. */
+  readonly containers: readonly SavedContainer[];
   /** Pièces posées dans le monde. */
   readonly loose: ReadonlyArray<SavedPart & { readonly x: number; readonly y: number; readonly z: number }>;
 }
@@ -58,7 +78,7 @@ export function parseSave(raw: string | null, catalog: PartCatalog): SaveData | 
   } catch {
     return null;
   }
-  if (!isObject(data) || data.version !== SAVE_VERSION) return null;
+  if (!isObject(data) || (data.version !== 1 && data.version !== SAVE_VERSION)) return null;
   const player = pose(data.player);
   if (!player || !finite(data.money, 1e9)) return null;
 
@@ -70,7 +90,20 @@ export function parseSave(raw: string | null, catalog: PartCatalog): SaveData | 
       const p = part(value, catalog);
       if (p) parts[slot] = p;
     }
-    bike = { ...bikePose, parts };
+    let fluids: SavedFluids | null = null;
+    const f = data.bike.fluids;
+    if (isObject(f) && finite(f.fuel, 100) && finite(f.premixOil, 100) && finite(f.oilTank, 100)) {
+      fluids = { fuel: Math.max(0, f.fuel), premixOil: Math.max(0, f.premixOil), oilTank: Math.max(0, f.oilTank) };
+    }
+    bike = { ...bikePose, parts, fluids };
+  }
+
+  const containers: SavedContainer[] = [];
+  if (Array.isArray(data.containers)) {
+    for (const c of data.containers.slice(0, 200)) {
+      if (!isObject(c) || (c.kind !== 'jerrican' && c.kind !== 'oil') || !finite(c.amount, 100) || !finite(c.x) || !finite(c.y) || !finite(c.z)) continue;
+      containers.push({ kind: c.kind, amount: Math.max(0, c.amount), x: c.x, y: c.y, z: c.z });
+    }
   }
 
   const loose: Array<SavedPart & { x: number; y: number; z: number }> = [];
@@ -88,6 +121,7 @@ export function parseSave(raw: string | null, catalog: PartCatalog): SaveData | 
     player,
     bike,
     loose,
+    containers,
   };
 }
 

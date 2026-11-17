@@ -21,6 +21,9 @@ export class VehicleHud {
   private readonly status: HTMLElement;
   private readonly keys: HTMLElement;
   private readonly keysExtra: HTMLElement;
+  private readonly fuelFill: HTMLElement;
+  private readonly reserveLight: HTMLElement;
+  private readonly oilLight: HTMLElement;
   private scheme: InputScheme;
   private last: Telemetry | null = null;
   private closeToast: (() => void) | null = null;
@@ -34,6 +37,11 @@ export class VehicleHud {
     this.status = el('span', { className: 'dash__status' });
     this.keys = el('p', { className: 'dash__keys' });
     this.keysExtra = el('p', { className: 'dash__keys' });
+    this.fuelFill = el('div', { className: 'dash__fuel-fill' });
+    this.reserveLight = el('span', { className: 'dash__light dash__light--fuel', text: `⛽ ${t('fuel.reserve')}` });
+    this.oilLight = el('span', { className: 'dash__light dash__light--oil', text: `🛢 ${t('fuel.oilLow')}` });
+    this.reserveLight.hidden = true;
+    this.oilLight.hidden = true;
     this.root = el('div', { className: 'dash', attrs: { 'aria-label': 'Tableau de bord' } }, [
       el('div', { className: 'dash__main' }, [
         this.gear,
@@ -41,6 +49,13 @@ export class VehicleHud {
       ]),
       el('div', { className: 'dash__rpm' }, [this.rpmFill]),
       el('div', { className: 'dash__meta' }, [this.rpmText, this.status]),
+      el('div', { className: 'dash__fuel', attrs: { 'aria-label': 'Essence' } }, [
+        el('span', { className: 'dash__fuel-label', text: 'E' }),
+        el('div', { className: 'dash__fuel-bar' }, [this.fuelFill]),
+        el('span', { className: 'dash__fuel-label', text: 'F' }),
+        this.reserveLight,
+        this.oilLight,
+      ]),
       this.keys,
       this.keysExtra,
     ]);
@@ -53,6 +68,12 @@ export class VehicleHud {
     });
     bus.on('vehicle:dismounted', () => (this.root.hidden = true));
     bus.on('vehicle:telemetry', (data) => this.render(data));
+    bus.on('vehicle:fuel', ({ fraction, reserve, oilLow }) => {
+      this.fuelFill.style.transform = `scaleX(${Math.min(Math.max(fraction, 0), 1)})`;
+      this.fuelFill.classList.toggle('is-low', reserve);
+      this.reserveLight.hidden = !reserve;
+      this.oilLight.hidden = oilLow !== true;
+    });
     bus.on('input:scheme', ({ scheme: next }) => {
       this.scheme = next;
       this.renderKeys();

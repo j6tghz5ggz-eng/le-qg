@@ -7,8 +7,9 @@ import type { GameEvents } from '../../app/events';
 import type { EventBus } from '../../core/events/EventBus';
 import type { InputManager } from '../../core/input/InputManager';
 import type { ShopSystem } from '../../economy/ShopSystem';
-import { SHOP_NAME, conditionLabel, describePart } from '../../economy/shop';
+import { SHOP_NAME, conditionLabel } from '../../economy/shop';
 import { formatMoney, type Wallet } from '../../economy/Wallet';
+import { isFeminine } from '../../mechanics/parts';
 import { el } from '../dom';
 import { t } from '../i18n';
 
@@ -104,7 +105,7 @@ export class ShopScreen {
   private renderBuy(): void {
     for (const section of this.shop.sections()) {
       this.list.appendChild(el('h3', { className: 'shop__section', text: section.title }));
-      for (const def of section.parts) {
+      for (const def of section.items) {
         const affordable = this.wallet.canAfford(def.price);
         const button = el('button', {
           className: 'shop__action',
@@ -115,7 +116,7 @@ export class ShopScreen {
         button.addEventListener('click', () => {
           if (this.shop.buy(def.id) === 'ok') this.render();
         });
-        this.list.appendChild(this.row(def.name, describePart(def), formatMoney(def.price), button));
+        this.list.appendChild(this.row(def.name, def.detail, formatMoney(def.price), button));
       }
     }
   }
@@ -137,7 +138,7 @@ export class ShopScreen {
       button.addEventListener('click', () => {
         if (this.shop.sell(item.uid) !== null) this.render();
       });
-      this.list.appendChild(this.row(item.def.name, `${conditionLabel(item.condition)} (${Math.round(item.condition * 100)} %)`, formatMoney(item.price), button));
+      this.list.appendChild(this.row(item.def.name, `${conditionLabel(item.condition, isFeminine(item.def))} (${Math.round(item.condition * 100)} %)`, formatMoney(item.price), button));
     }
   }
 
