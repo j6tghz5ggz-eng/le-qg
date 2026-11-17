@@ -63,7 +63,7 @@ presque chaque semaine : on met à jour volontairement, tous les paquets
 ├── index.html                 entrée du jeu (canvas + couche UI)
 ├── package.json · tsconfig*.json · vite.config.ts · playwright.config.ts
 ├── public/                    fichiers servis tels quels (icône, puis assets optimisés)
-├── assets-src/                sources lourdes : HORS GIT (voir § 8)
+├── assets-src/                sources lourdes : HORS GIT (voir § 9)
 ├── tools/check-sizes.mjs      budgets de taille
 ├── .githooks/pre-commit       refuse les fichiers de plus de 10 Mo
 ├── docs/ARCHITECTURE.md       ce document
@@ -85,14 +85,17 @@ presque chaque semaine : on met à jour volontairement, tous les paquets
     │   ├── rendering/         post-traitements
     │   └── save/              préférences (puis sauvegardes IndexedDB)
     ├── player/                joueur à la 1re personne, interaction (prendre, lancer)
+    ├── vehicles/
+    │   ├── bike/              physique de la moto, modèle 3D provisoire, fiches techniques
+    │   └── simulation/        moteur 2T + variateur + embrayage (TS pur, testé)
     ├── world/                 environnement (ciel, lumière, ombres), scène de test
     ├── debug/                 statistiques, API pour les tests
     └── ui/                    écrans et HUD HTML/CSS, commandes tactiles, textes (i18n)
 ```
 
 Dossiers prévus aux étapes suivantes : `core/assets/`, `core/audio/`,
-`world/streaming/`, `vehicles/{bike,simulation}/`, `mechanics/`, `economy/`,
-`inventory/`, `garage/`, `data/` (pièces et motos décrites en données).
+`world/streaming/`, `mechanics/`, `economy/`, `inventory/`, `garage/`,
+`data/` (pièces et motos décrites en données).
 
 ## 5. Boucle de jeu : pas fixe à 60 Hz
 
@@ -211,7 +214,50 @@ Trois appareils les alimentent (`core/input/devices/`) :
 - Le réticule et l'aide ne sont redessinés que lorsque la cible change
   (événement `interaction:focus`).
 
-## 8. Stockage gratuit : ce qui va où
+## 8. Le cyclomoteur (étape 2)
+
+C'est le risque technique n°1 du projet. Un vrai deux-roues tient debout
+grâce au pilote et à la géométrie de sa direction, ce qui est très difficile
+à simuler de façon stable à 60 Hz, et encore plus sur un téléphone. La
+méthode retenue est celle des « véhicules à rayons » des jeux, adaptée au
+deux-roues.
+
+| Élément | Modèle |
+|---|---|
+| Châssis | Un corps Havok (moto + pilote : 145 kg), centre de gravité et inerties réalistes. Les formes changent quand le pilote monte (on ajoute son buste). |
+| Suspensions | Un rayon par roue depuis l'ancrage, ressort + amortisseur + butée. La compression donne la **charge** sur le pneu. |
+| Pneus | Impulsions qui annulent le glissement latéral et transmettent moteur et freins, dans la limite **μ × charge**. La priorité va au latéral : la moto ne part pas de travers sous les freins. Les deux roues sont résolues **ensemble en 4 itérations** (impulsions séquentielles, comme les moteurs physiques) ; sinon la roue arrière défait la rotation amorcée par l'avant. |
+| Direction | Braquage de 34° à l'arrêt, réduit à 3° à pleine vitesse, tourné progressivement. |
+| Équilibre | Un « pilote » virtuel applique un couple pour amener la moto à l'**inclinaison d'équilibre** du virage, tan φ = v·ω/g (29° à 39 km/h dans un virage à 30°/s, mesuré). Il compense exactement le couple des pneus. Pieds au sol sous 1,2 m/s ; légère inclinaison sur la béquille une fois garée. |
+| Moteur | 2 temps 50 cc, courbe de couple, embrayage centrifuge (3 400 → 5 200 tr/min), variateur (régime visé 4 500 → 7 000 tr/min), rupteur à 9 000 tr/min. **Bridage** : le rapport long est limité, d'où 45 km/h ; le débridage sera une amélioration mécanique. |
+| Résistances | Traînée aérodynamique (CdA 0,6), résistance au roulement, frein moteur. |
+| Freins | Tambours : ≈ 6 m/s² avec les deux. Frein maintenu à l'arrêt = **recul aux pieds**. |
+
+- **Rendu interpolé.** Le corps physique est invisible ; le modèle 3D et la
+  caméra du pilote sont interpolés entre les deux derniers pas, avec le
+  nouveau rythme `lateFixedUpdate`, appelé après chaque pas physique.
+- **Caméra du pilote.** Elle est rattachée aux yeux du pilote, avec un regard
+  libre limité. Elle n'annule que **50 % de l'inclinaison**, compromis
+  entre sensation et mal des transports.
+- **Monter / descendre.** E, le bouton « Monter », ou Y à la manette, à
+  proximité, sans avoir à viser la moto. Pour descendre, il faut rouler à
+  moins de 9 km/h, et trois rayons cherchent la place de se tenir debout : à
+  gauche, à droite, derrière, puis devant.
+- **Commandes de conduite.** Elles réutilisent celles de la marche. Au
+  clavier, gaz et guidon sont indépendants : la diagonale n'est pas
+  normalisée (`getMoveAxes`), sinon Z + D ne donnait que 70 % des gaz.
+- **Mesuré en jeu par les tests** : 0 à 37 km/h en 6 s, 45 km/h maximum,
+  zigzag à 33 km/h sans quitter le sol, freinage d'urgence sans tête-à-queue,
+  saut de 2,7 m depuis la rampe reçu sans chute.
+
+**Limites connues** (pour plus tard) :
+- pas de chute ni de glissade spectaculaire : le pilote rattrape toujours ;
+- pas de contrôle de wheelie / stoppie ;
+- variateur sans usure ;
+- modèle 3D provisoire (à remplacer par un modèle Blender) ;
+- pas de son moteur.
+
+## 9. Stockage gratuit : ce qui va où
 
 Le principe : **Git ne contient que des fichiers légers.** Pas de Git LFS,
 dont le quota gratuit (stockage et bande passante mensuelle) s'épuise vite,
@@ -250,7 +296,7 @@ Opus) et instanciation.
    une fois avec `npm run hooks:install`.
 3. La CI échoue si un budget est dépassé.
 
-## 9. Hébergement gratuit (à mettre en place plus tard)
+## 10. Hébergement gratuit (à mettre en place plus tard)
 
 | Hébergeur | Points clés |
 |---|---|
@@ -263,7 +309,7 @@ gratuite), puis **Capacitor** pour des applications Android/iOS. Les outils
 sont gratuits ; seule la publication sur les stores est payante (Google Play :
 25 $ une fois ; App Store : 99 $/an et un Mac).
 
-## 10. Tests et intégration continue
+## 11. Tests et intégration continue
 
 - **Unitaires (Vitest)** : modules purs (bus d'événements, résolution
   dynamique, détection GPU, choix du profil…).
@@ -273,6 +319,11 @@ sont gratuits ; seule la publication sur les stores est payante (Google Play :
   - Joueur au clavier : marcher, sauter, s'accroupir, entrer dans le garage
     par le seuil, réticule sur la caisse à outils.
   - Joueur au tactile : prendre puis lancer, bouton Accroupir.
+  - Cyclomoteur au clavier : monter, accélérer, tourner (la moto penche),
+    freiner, descendre ; refus de descendre en roulant vite.
+  - Cyclomoteur au tactile : vrai glisser du pouce sur le joystick (protocole
+    Chrome DevTools) pour marcher, accélérer et freiner, puis boutons Monter et
+    Descendre.
   - Le déplacement est piloté par la position, pas par le temps, pour ne pas
     dépendre de la vitesse de la machine.
 - **CI GitHub Actions** (`.github/workflows/50cc-life.yml`) : types, tests,
@@ -281,7 +332,7 @@ sont gratuits ; seule la publication sur les stores est payante (Google Play :
   performance se font **sur de vrais appareils** : PC, Android d'entrée ou de
   milieu de gamme, iPhone.
 
-## 11. Journal des décisions
+## 12. Journal des décisions
 
 | # | Décision | Raison |
 |---|---|---|
@@ -298,12 +349,17 @@ sont gratuits ; seule la publication sur les stores est payante (Google Play :
 | D11 | Contrôleur de personnage Havok de Babylon, réglé + aide aux marches | Pentes, poussée et accroupissement fournis ; les réglages corrigent le flottement et les marches refusées |
 | D12 | Objets portés par un « ressort » de vitesse | Garde les collisions (comme My Summer Car), aucun objet ne traverse un mur |
 | D13 | Boutons tactiles en bascule (prendre, s'accroupir) | Garder un doigt appuyé longtemps est pénible sur téléphone |
+| D14 | Moto « à rayons » + pilote virtuel qui gère l'inclinaison | Stable à 60 Hz sur mobile, comportement crédible (inclinaison d'équilibre, adhérence limitée) |
+| D15 | Pneus résolus ensemble en 4 itérations | Virages serrés corrects à basse vitesse, coût négligeable |
+| D16 | Modèle 3D séparé du corps physique, interpolé | Fluide à 120/144 Hz ; le modèle Blender remplacera les formes simples sans toucher à la physique |
+| D17 | Moteur et variateur en TypeScript pur | Testés en quelques ms (vitesse max, accélération) ; base de la future simulation mécanique |
+| D18 | Accès de débogage complet (`window.__50CC_DEV__`) en développement seulement | Inspection et scripts de test, absent du build publié |
 
-## 12. Feuille de route
+## 13. Feuille de route
 
 0. ✅ **Fondations** : moteur, physique, boucle, profils de qualité, stats, tests, CI.
 1. ✅ **Joueur** : déplacement à la première personne, commandes clavier/souris, tactile et manette, prendre, porter et lancer.
-2. **Prototype moto conduisible** (le risque technique n°1, traité tôt).
+2. ✅ **Cyclomoteur conduisible** : physique à rayons, équilibre, moteur 2T bridé, monter/descendre, tableau de bord.
 3. **Streaming** des morceaux du monde + origine flottante.
 4. **Garage et pièces** : démontage et remontage, piloté par les données.
 5. **Simulation moteur 2 temps** reliée à la conduite.

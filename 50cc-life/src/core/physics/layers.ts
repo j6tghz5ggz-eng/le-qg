@@ -6,6 +6,7 @@
  */
 export const Layer = {
   PLAYER: 1 << 1,
+  VEHICLE: 1 << 2,
 } as const;
 
 /** Tout sauf le joueur. */

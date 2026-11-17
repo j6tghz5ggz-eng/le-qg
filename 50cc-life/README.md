@@ -6,8 +6,9 @@ première personne. Inspirations : My Summer Car, Mon Bazou.
 **Babylon.js · Havok · TypeScript · Vite** : 100 % gratuit, fonctionne dans le
 navigateur sur PC, Android et iOS.
 
-> État : **étape 1** (le joueur). Scène de test : on se déplace à pied en vue
-> à la première personne, on entre dans un garage, on prend et on lance des objets.
+> État : **étape 2** (le cyclomoteur). Scène de test : à pied en vue à la
+> première personne, un garage, des objets à prendre, et un cyclomoteur
+> conduisible (bridé à 45 km/h) avec une route d'essai et un slalom de plots.
 
 ## Démarrer
 
@@ -54,6 +55,9 @@ Ouvrez cette adresse sur le téléphone.
 | S'accroupir | C (maintenir) | Accroupir (bascule) | B |
 | Prendre / poser | clic gauche (maintenir) | Prendre / Lâcher | X |
 | Lancer | clic droit ou F | Lancer | RB |
+| Monter / descendre du cyclo | E | Monter / Descendre | Y |
+| Gaz / frein / guidon (en cyclo) | Z/W · S · Q/A, D | joystick (haut, bas, côtés) | gâchettes + stick gauche |
+| Reculer aux pieds (à l'arrêt) | maintenir S | joystick vers le bas | gâchette gauche |
 | Libérer la souris | Échap | | |
 | Statistiques / qualité | F3 ou 📊 | 📊 | |
 | Lâcher une caisse (test) | B | bouton dans le panneau 📊 | |

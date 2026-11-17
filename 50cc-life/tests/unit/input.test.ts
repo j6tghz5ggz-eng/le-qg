@@ -71,6 +71,16 @@ describe('ActionState — déplacement et regard', () => {
     expect(move.x).toBeCloseTo(Math.SQRT1_2);
   });
 
+  it('pour la marche la diagonale est normalisée, pas pour la conduite', () => {
+    const state = new ActionState(clock().now);
+    state.setMove('kb', 1, 1);
+    const walk = state.getMove();
+    expect(Math.hypot(walk.x, walk.y)).toBeCloseTo(1);
+    expect(state.getMoveAxes()).toEqual({ x: 1, y: 1 });
+    state.setMove('touch', 0.5, 0);
+    expect(state.getMoveAxes()).toEqual({ x: 1, y: 1 });
+  });
+
   it('accumule le regard jusqu’à consommation', () => {
     const state = new ActionState(clock().now);
     state.addLook(0.1, -0.05);

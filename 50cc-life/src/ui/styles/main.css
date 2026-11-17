@@ -116,7 +116,9 @@ select {
   z-index: 10;
 }
 
-.loading.is-hidden {
+/* Sélecteur avec #ui-root : doit l'emporter sur « #ui-root > * { pointer-events: auto } »,
+   sinon l'écran en fondu intercepte les premiers gestes. */
+#ui-root > .loading.is-hidden {
   opacity: 0;
   pointer-events: none;
 }
@@ -517,4 +519,95 @@ kbd {
   background: var(--ui-bg);
   font-size: 0.85rem;
   text-align: center;
+}
+
+/* ---------- Bouton contextuel tactile ---------- */
+.touch-btn--use {
+  grid-area: use;
+  border-color: var(--ui-accent);
+  background: rgba(255, 176, 32, 0.28);
+}
+
+.touch-buttons {
+  grid-template-areas:
+    'use use'
+    'crouch grab'
+    'throw jump';
+}
+
+/* ---------- Tableau de bord ---------- */
+.dash {
+  position: absolute;
+  left: 50%;
+  bottom: calc(14px + var(--safe-bottom));
+  transform: translateX(-50%);
+  width: min(260px, calc(100% - 32px));
+  padding: 10px 14px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--ui-line);
+  background: var(--ui-bg);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash__main {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+}
+
+.dash__speed {
+  font-size: 2.4rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.dash__unit {
+  color: var(--ui-muted);
+  font-weight: 600;
+}
+
+.dash__rpm {
+  height: 6px;
+  margin-top: 8px;
+  border-radius: 3px;
+  background: var(--ui-line);
+  overflow: hidden;
+}
+
+.dash__rpm-fill {
+  height: 100%;
+  background: var(--ui-accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.1s linear;
+}
+
+.dash__rpm-fill.is-red {
+  background: var(--ui-danger);
+}
+
+.dash__meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  color: var(--ui-muted);
+  font-size: 0.78rem;
+}
+
+.dash__keys {
+  margin: 8px 0 0;
+  color: var(--ui-muted);
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+/* Écran étroit (téléphone en portrait) : en haut, loin des pouces. */
+@media (max-width: 700px) {
+  .dash {
+    top: calc(10px + var(--safe-top));
+    bottom: auto;
+    width: 170px;
+  }
 }

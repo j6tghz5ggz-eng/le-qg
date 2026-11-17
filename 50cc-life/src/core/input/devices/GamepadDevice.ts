@@ -2,8 +2,9 @@
  * Manette (API Gamepad, disposition « standard » : Xbox, PlayStation…).
  *
  * Stick gauche : se déplacer · stick droit : regarder · A : sauter ·
- * B : s'accroupir · X : prendre · Y : utiliser · RB : lancer ·
- * clic du stick gauche : courir.
+ * B : s'accroupir · X : prendre · Y : utiliser (monter / descendre) ·
+ * RB : lancer · clic du stick gauche : courir.
+ * En moto : gâchette droite = gaz, gâchette gauche = frein.
  */
 import type { ActionState } from '../ActionState';
 import type { ButtonAction } from '../actions';
@@ -54,6 +55,12 @@ export class GamepadDevice {
         responseCurve(look.y) * this.pitchSpeed * dt * (this.invertY ? -1 : 1),
       );
     }
+
+    const throttle = pad.buttons[7]?.value ?? 0;
+    const brake = pad.buttons[6]?.value ?? 0;
+    this.state.setAxis('throttle', 'pad', throttle > 0.05 ? throttle : 0);
+    this.state.setAxis('brake', 'pad', brake > 0.05 ? brake : 0);
+    if (throttle > 0.05 || brake > 0.05) active = true;
 
     for (const [index, action] of BUTTON_MAP) {
       const pressed = pad.buttons[index]?.pressed ?? false;

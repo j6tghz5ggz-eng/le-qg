@@ -28,4 +28,10 @@ export interface GameEvents {
   'input:scheme': { readonly scheme: InputScheme };
   'input:pointerLock': { readonly locked: boolean };
   'interaction:focus': InteractionFocus;
+  'vehicle:mounted': { readonly label: string };
+  'vehicle:dismounted': Record<string, never>;
+  /** Tableau de bord (≈ 10 fois par seconde pendant la conduite). */
+  'vehicle:telemetry': { readonly speedKmh: number; readonly rpm: number; readonly limiterRpm: number };
+  /** Message court à afficher (ex. « Ralentissez pour descendre »). */
+  'ui:notice': { readonly message: string };
 }

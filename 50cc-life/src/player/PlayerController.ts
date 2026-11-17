@@ -14,6 +14,7 @@
 import { Camera } from '@babylonjs/core/Cameras/camera';
 import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import type { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import {
   CharacterSupportedState,
   PhysicsCharacterController,
@@ -45,6 +46,13 @@ const DOWN = new Vector3(0, -1, 0);
 const FOV_LANDSCAPE = 1.08;
 const FOV_PORTRAIT = 1.05;
 const EYE_SMOOTHING = 14;
+/** Regard libre du pilote autour de l'axe de la moto (rad). */
+const RIDER_YAW_LIMIT = 2.0;
+const RIDER_PITCH_LIMITS = [-1.0, 1.1] as const;
+/** Part de l'inclinaison de la moto annulée pour la caméra (confort, mal des transports). */
+const RIDER_ROLL_COMPENSATION = 0.5;
+/** Hauteur des yeux d'un pilote assis au-dessus du sol (m), pour placer la capsule. */
+const RIDER_EYE_HEIGHT = 1.45;
 /** Vitesse à laquelle la caméra rattrape une montée de marche. */
 const STEP_SMOOTHING = 18;
 /** En dessous de cette part de la vitesse voulue, le joueur est considéré bloqué. */
@@ -65,6 +73,11 @@ export class PlayerController implements GameSystem {
   private stepOffset = 0;
   /** Temps (s) pendant lequel le placage au sol est suspendu après une marche. */
   private snapCooldown = 0;
+  /** Siège occupé (null = à pied). */
+  private seat: { readonly eye: TransformNode; readonly lean: () => number } | null = null;
+  private riderYaw = 0;
+  private riderPitch = 0;
+  private savedCollideMask = 0;
   private portrait: boolean | null = null;
   private readonly prevFoot = new Vector3();
   private readonly currFoot = new Vector3();
@@ -99,6 +112,10 @@ export class PlayerController implements GameSystem {
 
   get isCrouched(): boolean {
     return this.crouched;
+  }
+
+  get isRiding(): boolean {
+    return this.seat !== null;
   }
 
   /** Position des pieds au dernier pas de simulation. */
@@ -152,6 +169,10 @@ export class PlayerController implements GameSystem {
   }
 
   fixedUpdate(dt: number): void {
+    if (this.seat) {
+      this.followSeat();
+      return;
+    }
     const c = this.controller;
     const input = this.ctx.input;
     c.checkSupportToRef(dt, DOWN, this.support);
@@ -196,6 +217,14 @@ export class PlayerController implements GameSystem {
 
   update(dt: number, alpha: number): void {
     const look = this.ctx.input.consumeLook();
+    if (this.seat) {
+      // Regard libre autour de l'axe de la moto ; la caméra suit la moto.
+      this.riderYaw = Math.max(-RIDER_YAW_LIMIT, Math.min(RIDER_YAW_LIMIT, this.riderYaw + look.x));
+      this.riderPitch = Math.max(RIDER_PITCH_LIMITS[0], Math.min(RIDER_PITCH_LIMITS[1], this.riderPitch + look.y));
+      this.camera.rotation.set(this.riderPitch, this.riderYaw, this.seat.lean() * RIDER_ROLL_COMPENSATION);
+      this.updateFov();
+      return;
+    }
     this.yaw += look.x;
     this.pitch = clampPitch(this.pitch + look.y);
 
@@ -207,6 +236,52 @@ export class PlayerController implements GameSystem {
     this.camera.position.set(foot.x, foot.y + this.eyeHeight + this.stepOffset, foot.z);
     this.camera.rotation.set(this.pitch, this.yaw, 0);
     this.updateFov();
+  }
+
+  /**
+   * Monte sur un véhicule : la caméra est rattachée aux yeux du pilote et la
+   * capsule du joueur ne touche plus rien (elle suit la moto).
+   */
+  mount(eye: TransformNode, lean: () => number): void {
+    if (this.seat) return;
+    if (this.crouched) {
+      this.crouched = false;
+      this.controller.setShapeOptions({ capsuleHeight: PLAYER.standingHeight, capsuleRadius: PLAYER.radius }, true);
+      this.controller.shape.filterMembershipMask = Layer.PLAYER;
+    }
+    this.seat = { eye, lean };
+    this.savedCollideMask = this.controller.shape.filterCollideMask;
+    this.controller.shape.filterCollideMask = 0;
+    this.controller.setVelocity(Vector3.Zero());
+    this.riderYaw = 0;
+    this.riderPitch = 0.12;
+    this.camera.parent = eye;
+    this.camera.position.setAll(0);
+  }
+
+  /** Descend du véhicule : pieds posés en `foot`, regard vers `heading` (+ regard libre). */
+  dismount(foot: Vector3, heading: number): void {
+    if (!this.seat) return;
+    this.seat = null;
+    this.camera.parent = null;
+    this.controller.shape.filterCollideMask = this.savedCollideMask;
+    this.controller.setPosition(new Vector3(foot.x, foot.y + this.controller.footOffset + 0.02, foot.z));
+    this.controller.setVelocity(Vector3.Zero());
+    this.yaw = heading + this.riderYaw;
+    this.pitch = clampPitch(this.riderPitch);
+    this.moveState = 'inAir';
+    this.readFoot(this.currFoot);
+    this.prevFoot.copyFrom(this.currFoot);
+    this.eyeHeight = PLAYER.eyeStanding;
+  }
+
+  /** En conduite, la capsule suit la moto (sa position sert au streaming du monde, etc.). */
+  private followSeat(): void {
+    if (!this.seat) return;
+    const eye = this.seat.eye.getAbsolutePosition();
+    this.controller.setPosition(this.tmp.a.set(eye.x, eye.y - RIDER_EYE_HEIGHT + this.controller.footOffset, eye.z));
+    this.prevFoot.copyFrom(this.currFoot);
+    this.readFoot(this.currFoot);
   }
 
   /** Replace le joueur au point de départ (chute hors du monde…). */

@@ -28,7 +28,10 @@ import { t } from '../ui/i18n';
 import { showFatalError } from '../ui/screens/ErrorScreen';
 import { LoadingScreen } from '../ui/screens/LoadingScreen';
 import { showToast } from '../ui/screens/Toast';
-import { PLAYER_SPAWN, TestWorld } from '../world/TestWorld';
+import { BIKE_SPAWN, PLAYER_SPAWN, TestWorld } from '../world/TestWorld';
+import { CYCLO } from '../vehicles/bike/specs';
+import { VehicleSystem } from '../vehicles/VehicleSystem';
+import { VehicleHud } from '../ui/hud/VehicleHud';
 import type { GameEvents, GameState } from './events';
 import type { GameContext, GameSystem } from './GameContext';
 
@@ -90,14 +93,20 @@ export class Game {
       const world = new TestWorld();
       const player = new PlayerController(PLAYER_SPAWN.position, PLAYER_SPAWN.yaw, PLAYER_SPAWN.pitch);
       const interaction = new InteractionSystem(player);
-      // Ordre important : le monde, puis le joueur (caméra), puis l'interaction (rayon depuis la caméra).
+      const vehicles = new VehicleSystem(player, { addShadowCaster: (m) => world.environment.addShadowCaster(m) }, [
+        { spec: CYCLO, position: BIKE_SPAWN.position, yaw: BIKE_SPAWN.yaw },
+      ]);
+      // Ordre important : le monde, le joueur (caméra), les véhicules, puis
+      // l'interaction (rayon depuis la caméra, désactivée en conduite).
       await this.addSystem(world, ctx);
       await this.addSystem(player, ctx);
+      await this.addSystem(vehicles, ctx);
       await this.addSystem(interaction, ctx);
 
       new Hud(this.uiRoot, this.bus, input.scheme);
       new TouchControls(this.uiRoot, input, this.bus);
       new PointerLockHint(this.uiRoot, input, this.bus);
+      new VehicleHud(this.uiRoot, this.bus, input.scheme);
       const crateSpawn = new Vector3();
       new DebugOverlay(
         ctx,
@@ -116,8 +125,17 @@ export class Game {
         ],
         () => {
           const p = player.footPosition;
-          const state = player.isGrounded ? 'au sol' : 'en l’air';
-          return [`Joueur      ${p.x.toFixed(1)} ${p.y.toFixed(2)} ${p.z.toFixed(1)}  ·  ${state}${player.isCrouched ? ' · accroupi' : ''}`];
+          const state = player.isRiding ? 'en moto' : player.isGrounded ? 'au sol' : 'en l’air';
+          const lines = [`Joueur      ${p.x.toFixed(1)} ${p.y.toFixed(2)} ${p.z.toFixed(1)}  ·  ${state}${player.isCrouched ? ' · accroupi' : ''}`];
+          const bike = vehicles.current;
+          if (bike) {
+            const d = bike.telemetry();
+            lines.push(
+              `Moto        ${d.speedKmh.toFixed(1)} km/h · ${Math.round(d.rpm)} tr/min · roues au sol ${d.wheelsOnGround}`,
+              `            gaz ${d.throttle.toFixed(2)} · frein ${d.brake.toFixed(2)} · guidon ${d.steerDeg.toFixed(1)}° · angle ${d.leanDeg.toFixed(1)}°`,
+            );
+          }
+          return lines;
         },
       );
 
@@ -129,6 +147,9 @@ export class Game {
         beforeFrame: (dt) => input.poll(dt),
         fixedUpdate: (dt) => {
           for (const s of this.systems) s.fixedUpdate?.(dt);
+        },
+        lateFixedUpdate: (dt) => {
+          for (const s of this.systems) s.lateFixedUpdate?.(dt);
         },
         update: (dt, alpha) => {
           for (const s of this.systems) s.update?.(dt, alpha);
@@ -164,8 +185,18 @@ export class Game {
         get focus() {
           return interaction.focusLabel;
         },
+        get vehicle() {
+          const bike = vehicles.current;
+          if (!bike) return null;
+          const d = bike.telemetry();
+          return { speedKmh: d.speedKmh, rpm: d.rpm, heading: d.heading, lean: d.leanDeg, wheelsOnGround: d.wheelsOnGround };
+        },
+        get parkedBike() {
+          const bike = vehicles.bikes[0];
+          return bike ? { x: bike.position.x, y: bike.position.y, z: bike.position.z, lean: bike.leanAngle } : null;
+        },
         probeY: () => world.probeY(),
-      });
+      }, { scene, engine, player, vehicles, interaction, world, input });
 
       this.loop.start();
       this.setState('playing');

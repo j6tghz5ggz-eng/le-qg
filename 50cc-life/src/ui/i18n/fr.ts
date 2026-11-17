@@ -48,6 +48,15 @@ export const fr = {
   'lock.throw': 'Lancer',
   'lock.release': 'Libérer la souris',
   'object.toolbox': 'Caisse à outils',
+  'object.cone': 'Plot',
+  'vehicle.cyclo': 'Cyclomoteur',
+  'vehicle.mount': 'Monter',
+  'vehicle.dismount': 'Descendre',
+  'vehicle.slowDown': 'Ralentissez pour descendre',
+  'vehicle.noRoom': 'Pas assez de place pour descendre ici',
+  'vehicle.auto': 'Automatique',
+  'vehicle.keys': '{forward} gaz · {back} frein · {left} {right} diriger · E descendre',
+  'touch.use': 'Utiliser',
   'object.crate': 'Caisse en bois',
 } as const;
 

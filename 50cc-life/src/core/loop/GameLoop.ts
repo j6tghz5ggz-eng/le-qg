@@ -19,6 +19,7 @@ import { stepAlpha } from './stepAlpha';
 export interface LoopCallbacks {
   beforeFrame(dt: number): void;
   fixedUpdate(dt: number): void;
+  lateFixedUpdate(dt: number): void;
   update(dt: number, alpha: number): void;
   /** Après chaque image rendue, avec la durée de l'image en ms. */
   afterRender(frameMs: number): void;
@@ -41,6 +42,7 @@ export class GameLoop {
     const frameDt = (): number => Math.min(engine.getDeltaTime() / 1000, MAX_FRAME_DT);
     scene.onBeforeAnimationsObservable.add(() => callbacks.beforeFrame(frameDt()));
     scene.onBeforeStepObservable.add(() => callbacks.fixedUpdate(this.fixedDt));
+    scene.onAfterStepObservable.add(() => callbacks.lateFixedUpdate(this.fixedDt));
     scene.onBeforeRenderObservable.add(() =>
       callbacks.update(frameDt(), stepAlpha(readAccumulatorMs(scene), engine.getTimeStep())),
     );

@@ -8,7 +8,7 @@ import type { GameEvents } from '../../app/events';
 import type { EventBus } from '../events/EventBus';
 import type { PlatformInfo } from '../platform/platform';
 import { ActionState } from './ActionState';
-import type { ButtonAction, InputScheme, Vec2 } from './actions';
+import type { AxisAction, ButtonAction, InputScheme, Vec2 } from './actions';
 import { GamepadDevice } from './devices/GamepadDevice';
 import { KeyboardMouseDevice } from './devices/KeyboardMouseDevice';
 import { TouchDevice } from './devices/TouchDevice';
@@ -53,8 +53,16 @@ export class InputManager {
     return this.state.consumePress(action);
   }
 
+  getAxis(axis: AxisAction): number {
+    return this.state.getAxis(axis);
+  }
+
   getMove(): Vec2 {
     return this.state.getMove();
+  }
+
+  getMoveAxes(): Vec2 {
+    return this.state.getMoveAxes();
   }
 
   consumeLook(): Vec2 {

@@ -35,6 +35,9 @@ export class Hud {
       this.scheme = scheme;
       this.render();
     });
+    const layer = this.crosshair.parentElement;
+    bus.on('vehicle:mounted', () => layer && (layer.hidden = true));
+    bus.on('vehicle:dismounted', () => layer && (layer.hidden = false));
     this.render();
   }
 

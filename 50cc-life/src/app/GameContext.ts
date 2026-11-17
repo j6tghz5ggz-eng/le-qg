@@ -35,8 +35,10 @@ export interface GameContext {
 export interface GameSystem {
   readonly id: string;
   init?(ctx: GameContext): void | Promise<void>;
-  /** Pas fixe (1/60 s) : simulation, physique, gameplay. */
+  /** Pas fixe (1/60 s) : simulation, physique, gameplay. Appelé AVANT le pas physique. */
   fixedUpdate?(dt: number): void;
+  /** Appelé APRÈS chaque pas physique (ex. mémoriser les poses pour l'interpolation). */
+  lateFixedUpdate?(dt: number): void;
   /**
    * Une fois par image rendue : caméra, interface, effets.
    * `alpha` (0 à 1) indique où l'on se trouve entre les deux derniers pas

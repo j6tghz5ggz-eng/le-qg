@@ -21,7 +21,10 @@ export class TouchControls {
   private readonly grabButton: HTMLButtonElement;
   private readonly throwButton: HTMLButtonElement;
   private readonly crouchButton: HTMLButtonElement;
+  private readonly useButton: HTMLButtonElement;
+  private readonly jumpButton: HTMLButtonElement;
   private readonly hint: HTMLElement;
+  private riding = false;
   private focus: InteractionFocus = NO_FOCUS;
   private grabOn = false;
   private crouchOn = false;
@@ -38,6 +41,11 @@ export class TouchControls {
 
     const jump = this.button(t('touch.jump'), 'touch-btn--jump');
     this.bindHold(jump, 'jump');
+    this.jumpButton = jump;
+    // Bouton contextuel : « Monter » devant la moto, « Descendre » en conduite…
+    this.useButton = this.button(t('touch.use'), 'touch-btn--use');
+    this.bindHold(this.useButton, 'use');
+    this.useButton.hidden = true;
     this.throwButton = this.button(t('touch.throw'), 'touch-btn--throw');
     this.bindHold(this.throwButton, 'throw');
     this.throwButton.hidden = true;
@@ -48,6 +56,7 @@ export class TouchControls {
 
     this.hint = el('p', { className: 'touch-hint', text: t('touch.hint') });
     const cluster = el('div', { className: 'touch-buttons' }, [
+      this.useButton,
       this.crouchButton,
       this.grabButton,
       this.throwButton,
@@ -60,6 +69,8 @@ export class TouchControls {
     window.setTimeout(() => (this.hint.hidden = true), 8000);
     bus.on('input:scheme', ({ scheme }) => (this.root.hidden = scheme !== 'touch'));
     bus.on('interaction:focus', (focus) => this.onFocus(focus));
+    bus.on('vehicle:mounted', () => this.setRiding(true));
+    bus.on('vehicle:dismounted', () => this.setRiding(false));
     input.touch.onStick = (view) => this.renderStick(view);
     this.renderGrab();
   }
@@ -72,6 +83,21 @@ export class TouchControls {
       this.input.touch.setButton('grab', false);
     }
     this.renderGrab();
+    this.renderUse();
+  }
+
+  private setRiding(riding: boolean): void {
+    this.riding = riding;
+    if (riding && this.crouchOn) this.toggleCrouch();
+    for (const button of [this.jumpButton, this.crouchButton, this.grabButton]) button.hidden = riding;
+    this.throwButton.hidden = riding || !this.focus.holding;
+    this.renderUse();
+  }
+
+  private renderUse(): void {
+    const label = this.riding ? t('vehicle.dismount') : this.focus.useLabel;
+    this.useButton.hidden = label === null;
+    if (label) this.useButton.textContent = label;
   }
 
   private toggleGrab(): void {
@@ -97,7 +123,7 @@ export class TouchControls {
     this.grabButton.textContent = holding ? t('touch.drop') : t('touch.grab');
     this.grabButton.classList.toggle('is-available', this.focus.canGrab || holding);
     this.grabButton.setAttribute('aria-disabled', String(!(this.focus.canGrab || holding)));
-    this.throwButton.hidden = !holding;
+    this.throwButton.hidden = !holding || this.riding;
   }
 
   private renderStick(view: JoystickView): void {

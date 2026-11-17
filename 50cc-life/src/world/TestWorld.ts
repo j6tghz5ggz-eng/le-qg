@@ -11,6 +11,7 @@ import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTextur
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder';
+import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder';
 import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { PhysicsShapeType } from '@babylonjs/core/Physics/v2/IPhysicsEnginePlugin';
@@ -21,13 +22,19 @@ import type { Interactable } from '../core/interaction/Interactable';
 import { t } from '../ui/i18n';
 import { createEnvironment, type WorldEnvironment } from './environment/environment';
 
-const GROUND_SIZE = 200;
+const GROUND_SIZE = 400;
 const CRATE_SIZE = 0.8;
 /** Au-delà, les plus anciennes caisses sont supprimées (mémoire maîtrisée). */
 const MAX_CRATES = 60;
 
 /** Point de départ du joueur : face à l'établi, regard légèrement baissé. */
 export const PLAYER_SPAWN = { position: new Vector3(0, 0, -6), yaw: 0, pitch: 0.3 } as const;
+
+/** Le cyclomoteur, garé à gauche du joueur, tourné vers la route d'essai (vers -x). */
+export const BIKE_SPAWN = { position: new Vector3(-2.8, 0, -5.2), yaw: -Math.PI / 2 } as const;
+
+/** Route d'essai : axe x, de z = -20 à z = 180. */
+const ROAD = { x: -14, width: 7, zStart: -20, zEnd: 180 } as const;
 
 interface DynamicProp {
   readonly mesh: Mesh;
@@ -48,7 +55,7 @@ export class TestWorld implements GameSystem {
   private ctx!: GameContext;
   private scene!: Scene;
   private env!: WorldEnvironment;
-  private materials!: Record<'concrete' | 'darkConcrete' | 'wood' | 'crate' | 'toolbox', PBRMaterial>;
+  private materials!: Record<'concrete' | 'darkConcrete' | 'wood' | 'crate' | 'toolbox' | 'cone', PBRMaterial>;
   private readonly crates: DynamicProp[] = [];
   private probe: Mesh | null = null;
   private counter = 0;
@@ -63,12 +70,14 @@ export class TestWorld implements GameSystem {
       wood: pbr(this.scene, 'wood', new Color3(0.42, 0.28, 0.16), 0.7),
       crate: pbr(this.scene, 'crate', new Color3(0.55, 0.36, 0.18), 0.75),
       toolbox: pbr(this.scene, 'toolbox', new Color3(0.62, 0.07, 0.05), 0.35, 0.6),
+      cone: pbr(this.scene, 'cone', new Color3(0.95, 0.32, 0.05), 0.6),
     };
 
     this.createGround();
     this.createRamp();
     this.createGarage();
     this.createWorkbench();
+    this.createRoad();
 
     // Pyramide de caisses : 4 + 3 + 2 + 1
     for (let row = 0; row < 4; row++) {
@@ -79,6 +88,11 @@ export class TestWorld implements GameSystem {
     }
     // Caisse « témoin » lâchée de haut : sert aux tests automatiques.
     this.probe = this.addCrate(new Vector3(3.5, 20, 2)).mesh;
+  }
+
+  /** Ombres : utilisé par les véhicules. */
+  get environment(): WorldEnvironment {
+    return this.env;
   }
 
   get crateCount(): number {
@@ -161,6 +175,30 @@ export class TestWorld implements GameSystem {
     this.register(body, { label: t('object.toolbox'), grabbable: true });
   }
 
+  /** Route d'essai avec marquage et slalom de plots renversables. */
+  private createRoad(): void {
+    const length = ROAD.zEnd - ROAD.zStart;
+    const road = CreateGround('road', { width: ROAD.width, height: length }, this.scene);
+    road.position.set(ROAD.x, 0.01, (ROAD.zStart + ROAD.zEnd) / 2);
+    const mat = new PBRMaterial('asphalt', this.scene);
+    mat.albedoTexture = createRoadTexture(this.scene, length / 8);
+    mat.metallic = 0;
+    mat.roughness = 0.85;
+    road.material = mat;
+    road.receiveShadows = true;
+    road.freezeWorldMatrix();
+    road.isPickable = false;
+
+    for (let i = 0; i < 10; i++) {
+      const cone = CreateCylinder(`cone-${i}`, { diameterTop: 0.04, diameterBottom: 0.3, height: 0.5, tessellation: 12 }, this.scene);
+      cone.position.set(ROAD.x + (i % 2 === 0 ? -0.9 : 0.9), 0.25, 15 + i * 9);
+      cone.material = this.materials.cone;
+      this.env.addShadowCaster(cone);
+      const body = new PhysicsAggregate(cone, PhysicsShapeType.CYLINDER, { mass: 1.5, friction: 0.7, restitution: 0.2 }, this.scene);
+      this.register(body, { label: t('object.cone'), grabbable: true });
+    }
+  }
+
   private staticBox(spec: BoxSpec): Mesh {
     const [w, h, d] = spec.size;
     const mesh = CreateBox(spec.name, { width: w, height: h, depth: d }, this.scene);
@@ -214,6 +252,23 @@ function pbr(scene: Scene, name: string, color: Color3, roughness: number, metal
   mat.metallic = metallic;
   mat.roughness = roughness;
   return mat;
+}
+
+/** Asphalte avec ligne centrale discontinue, généré en mémoire. */
+function createRoadTexture(scene: Scene, repeat: number): DynamicTexture {
+  const w = 128;
+  const h = 256;
+  const tex = new DynamicTexture('road', { width: w, height: h }, scene, true);
+  const ctx = tex.getContext();
+  ctx.fillStyle = '#2b2c2e';
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#d8d6cf';
+  ctx.fillRect(w / 2 - 2, 0, 4, h / 2); // pointillé central
+  ctx.fillRect(4, 0, 3, h); // bords
+  ctx.fillRect(w - 7, 0, 3, h);
+  tex.update();
+  tex.vScale = repeat;
+  return tex;
 }
 
 /** Damier généré en mémoire (aucun fichier à télécharger). */

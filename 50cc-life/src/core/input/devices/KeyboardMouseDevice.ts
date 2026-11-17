@@ -97,6 +97,15 @@ export class KeyboardMouseDevice {
     }
   }
 
+  /** Libellés des 4 touches de déplacement (ex. Z, Q, S, D en AZERTY). */
+  static async keyLabels(): Promise<{ forward: string; left: string; back: string; right: string }> {
+    const label = await KeyboardMouseDevice.moveKeysLabel();
+    if (label.length === 4) {
+      return { forward: label[0]!, left: label[1]!, back: label[2]!, right: label[3]! };
+    }
+    return { forward: 'Z/W', left: 'Q/A', back: 'S', right: 'D' };
+  }
+
   /** Libellé des touches de déplacement selon la disposition du clavier (ex. « ZQSD »). */
   static async moveKeysLabel(): Promise<string> {
     const nav = navigator as Navigator & {
@@ -138,13 +147,9 @@ export class KeyboardMouseDevice {
     const action = KEY_ACTIONS[code];
     if (action) this.state.setButton(action, `kb:${code}`, down);
     const held = (list: readonly string[]): number => (list.some((k) => this.keys.has(k)) ? 1 : 0);
-    let x = held(MOVE_KEYS.right) - held(MOVE_KEYS.left);
-    let y = held(MOVE_KEYS.forward) - held(MOVE_KEYS.back);
-    if (x !== 0 && y !== 0) {
-      x *= Math.SQRT1_2;
-      y *= Math.SQRT1_2;
-    }
-    this.state.setMove('kb', x, y);
+    // Valeurs brutes : ActionState normalise la diagonale pour la marche
+    // (getMove), mais pas pour la conduite (getMoveAxes).
+    this.state.setMove('kb', held(MOVE_KEYS.right) - held(MOVE_KEYS.left), held(MOVE_KEYS.forward) - held(MOVE_KEYS.back));
   }
 
   private readonly onPointerDown = (event: PointerEvent): void => {

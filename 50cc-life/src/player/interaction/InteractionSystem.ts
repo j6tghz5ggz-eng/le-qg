@@ -66,6 +66,13 @@ export class InteractionSystem implements GameSystem {
 
   update(): void {
     const input = this.ctx.input;
+    if (this.player.isRiding) {
+      // En conduite, les commandes appartiennent au véhicule.
+      this.focus = null;
+      if (this.held) this.release(false);
+      this.publishFocus();
+      return;
+    }
     // Consommés à chaque image : un appui « dans le vide » ne doit pas
     // déclencher une action plus tard.
     const grabPressed = input.consumePress('grab');
@@ -118,7 +125,8 @@ export class InteractionSystem implements GameSystem {
     v.end.copyFrom(v.origin).addInPlace(v.forward.scaleInPlace(CARRY.reach));
     this.ray.reset();
     this.physicsEngine.raycastToRef(v.origin, v.end, this.ray, { collideWith: ALL_BUT_PLAYER });
-    const body = this.ray.hasHit ? this.ray.body : undefined;
+    let body = this.ray.hasHit ? this.ray.body : undefined;
+    if (!this.ctx.interactables.get(body)) body = this.nearestInProximity(v.forward) ?? undefined;
     const item = this.ctx.interactables.get(body);
     if (!body || !item) {
       this.focus = null;
@@ -127,6 +135,27 @@ export class InteractionSystem implements GameSystem {
     if (this.focus?.body !== body) {
       this.focus = { body, item, mass: body.getMassProperties().mass ?? 0 };
     }
+  }
+
+  /** Objet « de proximité » le plus proche, devant le joueur. */
+  private nearestInProximity(forward: Vector3): PhysicsBody | null {
+    const foot = this.player.footPosition;
+    const flatLength = Math.hypot(forward.x, forward.z) || 1;
+    const fx = forward.x / flatLength;
+    const fz = forward.z / flatLength;
+    let best: PhysicsBody | null = null;
+    let bestDistance = Infinity;
+    for (const [body, proximity] of this.ctx.interactables.proximityEntries()) {
+      const p = proximity.position();
+      const dx = p.x - foot.x;
+      const dz = p.z - foot.z;
+      const distance = Math.hypot(dx, dz);
+      if (distance > proximity.radius || distance >= bestDistance || Math.abs(p.y - foot.y) > 1.5) continue;
+      if (distance > 0.3 && (dx * fx + dz * fz) / distance < 0.2) continue; // derrière le joueur
+      best = body;
+      bestDistance = distance;
+    }
+    return best;
   }
 
   private grab(target: Target): void {
